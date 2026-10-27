@@ -63,6 +63,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   setupGlobalHotkeyListeners();
   setupEscapeKeyHandler();
   refreshPinsList();
+  await loadMediaGallery();
+
+  await listen("media-saved", () => {
+    loadMediaGallery();
+  });
+  await listen("media-deleted", () => {
+    loadMediaGallery();
+  });
 });
 
 function setupEscapeKeyHandler() {
@@ -128,6 +136,8 @@ function setupTabs() {
 
       if (tabId === "screenshot") {
         refreshPinsList();
+      } else if (tabId === "gallery") {
+        loadMediaGallery();
       }
     });
   });
@@ -449,7 +459,7 @@ async function stopActiveRecording() {
     btnAudio.classList.add("btn-primary");
     btnAudio.innerHTML = `<span>开始录音 (F8)</span>`;
 
-    addMediaToGallery(result.path, result.duration, result.size_bytes);
+    await loadMediaGallery();
     alert(`录制完成并保存！\n时长: ${result.duration}\n路径: ${result.path}`);
   } catch (err) {
     alert("停止录制失败: " + err);
@@ -539,12 +549,27 @@ async function refreshPinsList() {
   }
 }
 
+interface MediaHistoryItem {
+  name: string;
+  path: string;
+  media_type: "video" | "audio" | "image";
+  size_bytes: number;
+  formatted_size: string;
+  created_at: string;
+  modified_timestamp: number;
+}
+
 // Gallery & History List
 function setupGalleryHandlers() {
   const btnOpen = document.getElementById("btnOpenFolder");
   btnOpen?.addEventListener("click", async () => {
     const settings = await invoke<AppSettings>("get_settings");
     await invoke("open_output_folder", { path: settings.output_dir });
+  });
+
+  const btnRefresh = document.getElementById("btnRefreshGallery");
+  btnRefresh?.addEventListener("click", async () => {
+    await loadMediaGallery();
   });
 
   const sidebarOutput = document.getElementById("sidebarOutputPath");
@@ -554,37 +579,118 @@ function setupGalleryHandlers() {
   });
 }
 
-function addMediaToGallery(path: string, duration: string, sizeBytes: number) {
+async function loadMediaGallery() {
   const list = document.getElementById("galleryList");
+  const badge = document.getElementById("galleryCountBadge");
   if (!list) return;
 
-  const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
-  const filename = path.split("\\").pop() || path;
+  try {
+    const items = await invoke<MediaHistoryItem[]>("get_media_history");
+    if (badge) {
+      badge.textContent = `共 ${items.length} 项`;
+    }
 
-  const item = document.createElement("div");
-  item.style.display = "flex";
-  item.style.alignItems = "center";
-  item.style.justifyContent = "space-between";
-  item.style.padding = "12px 16px";
-  item.style.background = "rgba(15, 23, 42, 0.7)";
-  item.style.borderRadius = "8px";
-  item.style.border = "1px solid var(--border-color)";
+    if (items.length === 0) {
+      list.innerHTML = `
+        <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 40px 0;">
+          <div style="font-size: 32px; margin-bottom: 8px;">📁</div>
+          暂无历史媒体文件。进行录屏、录音或截图后，文件将自动汇总在此处。
+        </div>
+      `;
+      return;
+    }
 
-  item.innerHTML = `
-    <div>
-      <div style="font-weight: 600; color: #f8fafc;">${filename}</div>
-      <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">时长: ${duration} | 大小: ${sizeMB} MB | 路径: ${path}</div>
-    </div>
-    <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="window.__openFileFolder('${path.replace(/\\/g, "\\\\")}')">打开目录</button>
-  `;
+    list.innerHTML = "";
 
-  list.prepend(item);
+    items.forEach((item) => {
+      const row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.alignItems = "center";
+      row.style.justifyContent = "space-between";
+      row.style.padding = "12px 16px";
+      row.style.background = "rgba(15, 23, 42, 0.7)";
+      row.style.borderRadius = "8px";
+      row.style.border = "1px solid var(--border-color)";
+      row.style.gap = "14px";
+
+      let typeIcon = "📹";
+      let typeLabel = "视频";
+      let typeColor = "#38bdf8";
+
+      if (item.media_type === "audio") {
+        typeIcon = "🎵";
+        typeLabel = "音频";
+        typeColor = "#a855f7";
+      } else if (item.media_type === "image") {
+        typeIcon = "📸";
+        typeLabel = "截图";
+        typeColor = "#10b981";
+      }
+
+      row.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1;">
+          <div style="width: 40px; height: 40px; border-radius: 8px; background: rgba(30, 41, 59, 0.8); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.06);">
+            ${typeIcon}
+          </div>
+          <div style="min-width: 0; flex: 1;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 600; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px;">${item.name}</span>
+              <span style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: ${typeColor}22; color: ${typeColor}; border: 1px solid ${typeColor}44; flex-shrink: 0;">${typeLabel}</span>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+              ${item.created_at} · ${item.formatted_size}
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-shrink: 0;">
+          <button class="btn btn-secondary btn-open-media" style="padding: 5px 10px; font-size: 12px;" title="使用默认程序打开">
+            ▶️ 打开
+          </button>
+          <button class="btn btn-secondary btn-locate-media" style="padding: 5px 10px; font-size: 12px;" title="在文件管理器中定位">
+            📂 定位
+          </button>
+          <button class="btn btn-delete-media" style="padding: 5px 9px; font-size: 12px; background: rgba(244,63,94,0.15); color: #f43f5e; border: 1px solid rgba(244,63,94,0.3); border-radius: 6px; cursor: pointer;" title="删除此文件">
+            🗑️
+          </button>
+        </div>
+      `;
+
+      row.querySelector(".btn-open-media")?.addEventListener("click", async () => {
+        try {
+          await invoke("open_media_file", { path: item.path });
+        } catch (err) {
+          alert("打开文件失败: " + err);
+        }
+      });
+
+      row.querySelector(".btn-locate-media")?.addEventListener("click", async () => {
+        try {
+          await invoke("open_media_folder", { path: item.path });
+        } catch (err) {
+          alert("定位文件失败: " + err);
+        }
+      });
+
+      row.querySelector(".btn-delete-media")?.addEventListener("click", async () => {
+        if (confirm(`确定要删除此文件吗？\n${item.name}`)) {
+          try {
+            await invoke("delete_media_file", { path: item.path });
+            await loadMediaGallery();
+          } catch (err) {
+            alert("删除失败: " + err);
+          }
+        }
+      });
+
+      list.appendChild(row);
+    });
+  } catch (err) {
+    console.error("Failed to load media history:", err);
+    if (list) {
+      list.innerHTML = `<div style="color: #f43f5e; font-size: 13px;">加载历史记录失败: ${err}</div>`;
+    }
+  }
 }
-
-(window as any).__openFileFolder = async (filePath: string) => {
-  const parent = filePath.substring(0, filePath.lastIndexOf("\\"));
-  await invoke("open_output_folder", { path: parent });
-};
 
 // Simulate live Audio VU meter waveform
 function setupAudioLevelSimulation() {

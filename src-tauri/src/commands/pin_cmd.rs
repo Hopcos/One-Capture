@@ -33,6 +33,14 @@ pub async fn create_pin_window(
 }
 
 #[tauri::command]
+pub fn start_pin_drag(app: AppHandle, id: String) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window(&id) {
+        let _ = win.start_dragging();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_pin_data(pin_mgr: State<'_, PinManager>, id: String) -> Result<PinItem, String> {
     pin_mgr
         .get_pin(&id)
@@ -54,13 +62,24 @@ pub fn close_pin_window(
 
 #[tauri::command]
 pub fn update_pin_zoom(
+    app: AppHandle,
     pin_mgr: State<'_, PinManager>,
     id: String,
     delta: f32,
 ) -> Result<f32, String> {
-    pin_mgr
+    let scale = pin_mgr
         .update_scale(&id, delta)
-        .ok_or_else(|| "Failed to update zoom".to_string())
+        .ok_or_else(|| "Failed to update zoom".to_string())?;
+
+    if let Some(pin) = pin_mgr.get_pin(&id) {
+        if let Some(win) = app.get_webview_window(&id) {
+            let target_w = (pin.width as f32 * scale).round().max(40.0) as f64;
+            let target_h = (pin.height as f32 * scale).round().max(40.0) as f64;
+            let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize::new(target_w, target_h)));
+        }
+    }
+
+    Ok(scale)
 }
 
 #[tauri::command]

@@ -770,14 +770,20 @@ function setupToolbarEvents() {
   // Action: Pin
   document.getElementById("btnPin")?.addEventListener("click", async () => {
     if (!cropRect) return;
-    const phys = getPhysicalCropRect();
     const croppedDataUrl = getCroppedCanvasDataUrl();
+
+    // Use CSS logical coordinates so the Tauri window spawns exactly where the user snipped!
+    const normX = Math.round(Math.min(cropRect.x, cropRect.x + cropRect.width));
+    const normY = Math.round(Math.min(cropRect.y, cropRect.y + cropRect.height));
+    const normW = Math.max(30, Math.round(Math.abs(cropRect.width)));
+    const normH = Math.max(30, Math.round(Math.abs(cropRect.height)));
+
     await invoke("create_pin_window", {
       imageDataUrl: croppedDataUrl,
-      x: phys.x,
-      y: phys.y,
-      width: phys.width,
-      height: phys.height,
+      x: normX,
+      y: normY,
+      width: normW,
+      height: normH,
     });
     cancelSnipping();
   });
@@ -792,16 +798,15 @@ function setupToolbarEvents() {
     cancelSnipping();
   });
 
-  // Action: Save to file
+  // Action: Save to file (saved directly to output directory & synced to history)
   document.getElementById("btnSave")?.addEventListener("click", async () => {
     if (!cropRect) return;
     const croppedDataUrl = getCroppedCanvasDataUrl();
-    const timestamp = new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14);
-    const defaultPath = `C:\\OneCapture_${timestamp}.png`;
-    const filePath = prompt("请输入图片保存路径:", defaultPath);
-    if (filePath) {
-      await invoke("save_image_file", { filePath, dataUrl: croppedDataUrl });
-      alert("截图已成功保存！");
+    try {
+      const savedPath = await invoke<string>("save_screenshot_to_history", { dataUrl: croppedDataUrl });
+      alert(`截图已成功保存至:\n${savedPath}`);
+    } catch (err) {
+      alert(`保存失败: ${err}`);
     }
     cancelSnipping();
   });

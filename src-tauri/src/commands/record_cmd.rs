@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use crate::recorder::{
     AudioRecordOptions, RecorderPipeline, RecordingStatus, VideoRecordOptions,
 };
@@ -77,11 +77,16 @@ pub fn stop_recording(
         let _ = float_win.hide();
     }
 
-    Ok(StopResult {
-        path,
+    let res = StopResult {
+        path: path.clone(),
         duration,
         size_bytes,
-    })
+    };
+
+    // Emit event to update media history in main window
+    let _ = app.emit("media-saved", &path);
+
+    Ok(res)
 }
 
 #[tauri::command]

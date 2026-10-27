@@ -35,11 +35,18 @@ pub fn run() {
             commands::get_recording_status,
             // Pin commands
             commands::create_pin_window,
+            commands::start_pin_drag,
             commands::get_pin_data,
             commands::close_pin_window,
             commands::update_pin_zoom,
             commands::update_pin_opacity,
             commands::list_pins,
+            // Gallery & History commands
+            commands::get_media_history,
+            commands::save_screenshot_to_history,
+            commands::open_media_file,
+            commands::open_media_folder,
+            commands::delete_media_file,
             // Settings & Audio commands
             commands::get_settings,
             commands::save_settings,
