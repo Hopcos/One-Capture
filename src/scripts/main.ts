@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface AppSettings {
   output_dir: string;
@@ -84,14 +85,79 @@ function setupEscapeKeyHandler() {
   });
 }
 
+// Screen capture workflow that safely hides the main window first
+async function startCaptureWorkflow(mode: "screenshot" | "record_region") {
+  const appWin = getCurrentWindow();
+  try {
+    // 1. Temporarily hide main window so user's screen capture is completely unobscured
+    await appWin.hide();
+    // 2. Allow Windows DWM composition transition to settle
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    // 3. Emit overlay mode & trigger capture
+    await emit("set-overlay-mode", { mode });
+    await invoke("capture_full_screen");
+  } catch (err) {
+    console.error("Failed to start capture workflow:", err);
+    await appWin.show();
+    await appWin.setFocus();
+  }
+}
+
+async function handleGlobalPinShortcut() {
+  try {
+    // 1. Try to pin the last capture or clipboard image via Rust
+    const pin = await invoke<PinItem | null>("pin_last_capture");
+    if (pin) {
+      await refreshPinsList();
+      return;
+    }
+    // 2. Fallback to reading image from system clipboard
+    if (navigator.clipboard && navigator.clipboard.read) {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        for (const type of item.types) {
+          if (type.startsWith("image/")) {
+            const blob = await item.getType(type);
+            const reader = new FileReader();
+            reader.onload = async () => {
+              const dataUrl = reader.result as string;
+              const img = new Image();
+              img.onload = async () => {
+                const maxW = Math.min(800, window.innerWidth - 100);
+                const scale = Math.min(1.0, maxW / img.width);
+                const w = Math.round(img.width * scale);
+                const h = Math.round(img.height * scale);
+                const x = Math.max(50, Math.round((window.screen.width - w) / 2));
+                const y = Math.max(50, Math.round((window.screen.height - h) / 2));
+                await invoke("create_pin_window", {
+                  imageDataUrl: dataUrl,
+                  x,
+                  y,
+                  width: w,
+                  height: h,
+                });
+                await refreshPinsList();
+              };
+              img.src = dataUrl;
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Global pin handling:", e);
+  }
+}
+
 async function setupGlobalHotkeyListeners() {
   await listen("global-hotkey-snip", async () => {
-    try {
-      await emit("set-overlay-mode", { mode: "screenshot" });
-      await invoke("capture_full_screen");
-    } catch (e) {
-      console.error("Global snip hotkey error:", e);
-    }
+    await startCaptureWorkflow("screenshot");
+  });
+
+  await listen("global-hotkey-pin-clipboard", async () => {
+    await handleGlobalPinShortcut();
   });
 
   await listen("global-hotkey-screen-record", async () => {
@@ -239,13 +305,8 @@ function setupInteractiveRegionSelector() {
     }
   });
 
-  btnSelectRegion?.addEventListener("click", async () => {
-    try {
-      await emit("set-overlay-mode", { mode: "record_region" });
-      await invoke("capture_full_screen");
-    } catch (e) {
-      alert("触发区域选择失败: " + e);
-    }
+  btnSelectRegion?.addEventListener("click", () => {
+    startCaptureWorkflow("record_region");
   });
 
   // Listen for region confirmation from overlay
@@ -285,11 +346,13 @@ async function loadSettings() {
     if (settingOutput) settingOutput.value = settings.output_dir;
 
     const hkSnip = document.getElementById("hkSnip") as HTMLInputElement;
+    const hkPin = document.getElementById("hkPin") as HTMLInputElement;
     const hkScreen = document.getElementById("hkScreen") as HTMLInputElement;
     const hkAudio = document.getElementById("hkAudio") as HTMLInputElement;
     const hkStop = document.getElementById("hkStop") as HTMLInputElement;
 
     if (hkSnip) hkSnip.value = settings.hotkeys.snip;
+    if (hkPin) hkPin.value = settings.hotkeys.pin_clipboard || "F3";
     if (hkScreen) hkScreen.value = settings.hotkeys.screen_record;
     if (hkAudio) hkAudio.value = settings.hotkeys.audio_record;
     if (hkStop) hkStop.value = settings.hotkeys.stop_record;
@@ -331,6 +394,7 @@ function setupRecordingHandlers() {
   btnSaveSettings?.addEventListener("click", async () => {
     const settingOutput = document.getElementById("settingOutputDir") as HTMLInputElement;
     const hkSnip = document.getElementById("hkSnip") as HTMLInputElement;
+    const hkPin = document.getElementById("hkPin") as HTMLInputElement;
     const hkScreen = document.getElementById("hkScreen") as HTMLInputElement;
     const hkAudio = document.getElementById("hkAudio") as HTMLInputElement;
     const hkStop = document.getElementById("hkStop") as HTMLInputElement;
@@ -339,6 +403,7 @@ function setupRecordingHandlers() {
       const current = await invoke<AppSettings>("get_settings");
       current.output_dir = settingOutput.value;
       current.hotkeys.snip = hkSnip.value;
+      if (hkPin) current.hotkeys.pin_clipboard = hkPin.value;
       current.hotkeys.screen_record = hkScreen.value;
       current.hotkeys.audio_record = hkAudio.value;
       current.hotkeys.stop_record = hkStop.value;
@@ -493,13 +558,8 @@ function startStatusPolling() {
 // Quick Snipping Trigger
 function setupScreenshotHandler() {
   const btn = document.getElementById("btnQuickSnip");
-  btn?.addEventListener("click", async () => {
-    try {
-      await emit("set-overlay-mode", { mode: "screenshot" });
-      await invoke("capture_full_screen");
-    } catch (e) {
-      alert("截图失败: " + e);
-    }
+  btn?.addEventListener("click", () => {
+    startCaptureWorkflow("screenshot");
   });
 }
 

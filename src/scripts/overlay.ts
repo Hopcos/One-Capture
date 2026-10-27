@@ -878,6 +878,11 @@ function setupKeyboardEvents() {
     } else if (e.key === "s" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       document.getElementById("btnSave")?.click();
+    } else if (e.key === "F3" || e.key === "F2" || e.key.toLowerCase() === "p" || (e.key.toLowerCase() === "t" && (e.ctrlKey || e.metaKey))) {
+      e.preventDefault();
+      if (cropRect) {
+        document.getElementById("btnPin")?.click();
+      }
     } else if (cropRect && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
       // Precision 1px (or 10px with Shift) keyboard nudging
       e.preventDefault();

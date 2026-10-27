@@ -2,11 +2,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::UNIX_EPOCH;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
 use base64::prelude::*;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use crate::config::AppSettings;
+use crate::pin::PinManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaHistoryItem {
@@ -93,7 +94,12 @@ pub fn get_media_history() -> Result<Vec<MediaHistoryItem>, String> {
 }
 
 #[tauri::command]
-pub fn save_screenshot_to_history(app: AppHandle, data_url: String) -> Result<String, String> {
+pub fn save_screenshot_to_history(
+    app: AppHandle,
+    pin_mgr: State<'_, PinManager>,
+    data_url: String,
+) -> Result<String, String> {
+    pin_mgr.set_last_capture(data_url.clone());
     let settings = AppSettings::load();
     let dir = PathBuf::from(&settings.output_dir);
     if !dir.exists() {

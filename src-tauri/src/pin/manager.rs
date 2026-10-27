@@ -20,13 +20,25 @@ pub struct PinItem {
 #[derive(Clone)]
 pub struct PinManager {
     pins: Arc<Mutex<HashMap<String, PinItem>>>,
+    last_capture: Arc<Mutex<Option<String>>>,
 }
 
 impl PinManager {
     pub fn new() -> Self {
         Self {
             pins: Arc::new(Mutex::new(HashMap::new())),
+            last_capture: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn set_last_capture(&self, data_url: String) {
+        if let Ok(mut lock) = self.last_capture.lock() {
+            *lock = Some(data_url);
+        }
+    }
+
+    pub fn get_last_capture(&self) -> Option<String> {
+        self.last_capture.lock().ok()?.clone()
     }
 
     /// Create and register a new pinned screenshot
@@ -38,6 +50,7 @@ impl PinManager {
         width: u32,
         height: u32,
     ) -> PinItem {
+        self.set_last_capture(image_data_url.clone());
         let id = format!("pin-{}", Uuid::new_v4());
         let item = PinItem {
             id: id.clone(),

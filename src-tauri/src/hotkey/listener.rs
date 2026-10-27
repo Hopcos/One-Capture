@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN,
     VK_F1, VK_F10, VK_F11, VK_F12, VK_F2, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9,
@@ -109,10 +109,6 @@ pub fn start_global_hotkey_listener(app_handle: AppHandle) {
                     let hotkey_id = msg.wParam as i32;
                     if hotkey_id == HotkeyId::Snip as i32 {
                         let _ = app_handle.emit("global-hotkey-snip", ());
-                        if let Some(overlay) = app_handle.get_webview_window("overlay") {
-                            let _ = overlay.show();
-                            let _ = overlay.set_focus();
-                        }
                     } else if hotkey_id == HotkeyId::ScreenRecord as i32 {
                         let _ = app_handle.emit("global-hotkey-screen-record", ());
                     } else if hotkey_id == HotkeyId::AudioRecord as i32 {

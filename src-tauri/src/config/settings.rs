@@ -18,7 +18,7 @@ impl Default for AppHotkeys {
             screen_record: "F7".to_string(),
             audio_record: "F8".to_string(),
             stop_record: "Ctrl+Shift+X".to_string(),
-            pin_clipboard: "F2".to_string(),
+            pin_clipboard: "F3".to_string(),
         }
     }
 }

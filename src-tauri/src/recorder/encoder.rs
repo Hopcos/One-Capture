@@ -158,9 +158,9 @@ pub fn build_screen_recording_args(
     // Overwrite without asking
     args.push("-y".to_string());
 
-    // Performance optimizations: Real-time low latency
-    args.push("-probesize".to_string());
-    args.push("32M".to_string());
+    // Performance optimizations: Real-time low latency & fast initialization
+    args.push("-thread_queue_size".to_string());
+    args.push("1024".to_string());
 
     // Video capture input via Windows GDI grabber
     args.push("-f".to_string());
@@ -196,32 +196,44 @@ pub fn build_screen_recording_args(
             args.push("-an".to_string());
         }
         AudioSourceMode::MicOnly => {
+            args.push("-thread_queue_size".to_string());
+            args.push("1024".to_string());
             args.push("-f".to_string());
             args.push("dshow".to_string());
             args.push("-i".to_string());
             args.push(format!("audio={}", mic_name));
+            args.push("-af".to_string());
+            args.push("aresample=async=1000".to_string());
             has_audio_stream = true;
         }
         AudioSourceMode::SpeakerOnly => {
+            args.push("-thread_queue_size".to_string());
+            args.push("1024".to_string());
             args.push("-f".to_string());
             args.push("dshow".to_string());
             args.push("-i".to_string());
             args.push(format!("audio={}", speaker_name));
+            args.push("-af".to_string());
+            args.push("aresample=async=1000".to_string());
             has_audio_stream = true;
         }
         AudioSourceMode::BothMixed => {
+            args.push("-thread_queue_size".to_string());
+            args.push("1024".to_string());
             args.push("-f".to_string());
             args.push("dshow".to_string());
             args.push("-i".to_string());
             args.push(format!("audio={}", speaker_name));
 
+            args.push("-thread_queue_size".to_string());
+            args.push("1024".to_string());
             args.push("-f".to_string());
             args.push("dshow".to_string());
             args.push("-i".to_string());
             args.push(format!("audio={}", mic_name));
 
             args.push("-filter_complex".to_string());
-            args.push("[1:a][2:a]amix=inputs=2:duration=first:dropout_transition=2[aout]".to_string());
+            args.push("[1:a][2:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1000[aout]".to_string());
             args.push("-map".to_string());
             args.push("0:v".to_string());
             args.push("-map".to_string());
@@ -245,6 +257,20 @@ pub fn build_screen_recording_args(
 
     args.push("-c:v".to_string());
     args.push(vcodec.to_string());
+
+    // Frequent IDR keyframe interval (1 keyframe per second) to guarantee instant video render on playback
+    args.push("-g".to_string());
+    args.push(options.fps.to_string());
+    args.push("-keyint_min".to_string());
+    args.push(options.fps.to_string());
+    args.push("-sc_threshold".to_string());
+    args.push("0".to_string());
+
+    // Force Constant Frame Rate from frame 0 and avoid negative timestamps
+    args.push("-fps_mode".to_string());
+    args.push("cfr".to_string());
+    args.push("-avoid_negative_ts".to_string());
+    args.push("make_zero".to_string());
 
     if vcodec == "libx264" || vcodec == "libx265" {
         args.push("-preset".to_string());

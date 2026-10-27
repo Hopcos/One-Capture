@@ -35,6 +35,7 @@ pub fn run() {
             commands::get_recording_status,
             // Pin commands
             commands::create_pin_window,
+            commands::pin_last_capture,
             commands::start_pin_drag,
             commands::move_pin_by,
             commands::get_pin_data,

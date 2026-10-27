@@ -74,6 +74,7 @@ pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
     // Restore and focus main window so user never feels trapped
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.show();
+        let _ = main.unminimize();
         let _ = main.set_focus();
     }
     Ok(())

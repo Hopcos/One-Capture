@@ -33,6 +33,33 @@ pub async fn create_pin_window(
 }
 
 #[tauri::command]
+pub fn pin_last_capture(
+    app: AppHandle,
+    pin_mgr: State<'_, PinManager>,
+) -> Result<Option<PinItem>, String> {
+    if let Some(data_url) = pin_mgr.get_last_capture() {
+        let pin = pin_mgr.create_pin(data_url.clone(), 120, 120, 640, 420);
+        let win_label = pin.id.clone();
+        let url = format!("pin.html?id={}", &pin.id);
+
+        let _win = WebviewWindowBuilder::new(&app, &win_label, WebviewUrl::App(url.into()))
+            .title("Pin")
+            .inner_size(640.0, 420.0)
+            .position(120.0, 120.0)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(true)
+            .build()
+            .map_err(|e| format!("Failed to create pin window: {}", e))?;
+
+        return Ok(Some(pin));
+    }
+    Ok(None)
+}
+
+#[tauri::command]
 pub fn start_pin_drag(app: AppHandle, id: String) -> Result<(), String> {
     if let Some(win) = app.get_webview_window(&id) {
         let _ = win.start_dragging();
