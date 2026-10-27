@@ -67,10 +67,9 @@ window.addEventListener("DOMContentLoaded", () => {
   // Stop recording
   btnStop?.addEventListener("click", async () => {
     try {
-      const res = await invoke<{ path: string; duration: string }>("stop_recording");
-      alert(`录制完成并保存！\n时长: ${res.duration}\n路径: ${res.path}`);
+      await invoke<{ path: string; duration: string }>("stop_recording");
     } catch (e) {
-      alert("停止录制失败: " + e);
+      console.error("停止录制失败:", e);
     }
   });
 

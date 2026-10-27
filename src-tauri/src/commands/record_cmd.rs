@@ -83,8 +83,9 @@ pub fn stop_recording(
         size_bytes,
     };
 
-    // Emit event to update media history in main window
+    // Emit events to update media history and reset buttons in main window
     let _ = app.emit("media-saved", &path);
+    let _ = app.emit("recording-stopped", ());
 
     Ok(res)
 }

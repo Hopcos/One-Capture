@@ -50,7 +50,7 @@ impl Default for AppSettings {
             hotkeys: AppHotkeys::default(),
             default_video_format: "mp4".to_string(),
             default_video_codec: "auto".to_string(),
-            default_video_fps: 60,
+            default_video_fps: 30,
             default_video_bitrate_kbps: 6000,
             default_audio_format: "aac".to_string(),
             default_audio_bitrate_kbps: 192,

@@ -203,7 +203,7 @@ pub fn build_screen_recording_args(
             args.push("-i".to_string());
             args.push(format!("audio={}", mic_name));
             args.push("-af".to_string());
-            args.push("aresample=async=1000".to_string());
+            args.push("aresample=async=1000:first_pts=0".to_string());
             has_audio_stream = true;
         }
         AudioSourceMode::SpeakerOnly => {
@@ -214,7 +214,7 @@ pub fn build_screen_recording_args(
             args.push("-i".to_string());
             args.push(format!("audio={}", speaker_name));
             args.push("-af".to_string());
-            args.push("aresample=async=1000".to_string());
+            args.push("aresample=async=1000:first_pts=0".to_string());
             has_audio_stream = true;
         }
         AudioSourceMode::BothMixed => {
@@ -232,8 +232,9 @@ pub fn build_screen_recording_args(
             args.push("-i".to_string());
             args.push(format!("audio={}", mic_name));
 
+            // Continuous silence padding on both inputs so idle loopback never freezes the video pipeline
             args.push("-filter_complex".to_string());
-            args.push("[1:a][2:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1000[aout]".to_string());
+            args.push("[1:a]aresample=async=1000:first_pts=0,apad[a1];[2:a]aresample=async=1000:first_pts=0,apad[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=0[aout]".to_string());
             args.push("-map".to_string());
             args.push("0:v".to_string());
             args.push("-map".to_string());
@@ -258,6 +259,10 @@ pub fn build_screen_recording_args(
     args.push("-c:v".to_string());
     args.push(vcodec.to_string());
 
+    // Explicit output framerate to ensure smooth constant frame delivery
+    args.push("-r".to_string());
+    args.push(options.fps.to_string());
+
     // Frequent IDR keyframe interval (1 keyframe per second) to guarantee instant video render on playback
     args.push("-g".to_string());
     args.push(options.fps.to_string());
@@ -266,9 +271,7 @@ pub fn build_screen_recording_args(
     args.push("-sc_threshold".to_string());
     args.push("0".to_string());
 
-    // Force Constant Frame Rate from frame 0 and avoid negative timestamps
-    args.push("-fps_mode".to_string());
-    args.push("cfr".to_string());
+    // Avoid negative timestamps and align timebase
     args.push("-avoid_negative_ts".to_string());
     args.push("make_zero".to_string());
 
@@ -279,6 +282,12 @@ pub fn build_screen_recording_args(
         args.push("zerolatency".to_string());
         args.push("-pix_fmt".to_string());
         args.push("yuv420p".to_string());
+        args.push("-crf".to_string());
+        args.push("23".to_string());
+        args.push("-maxrate".to_string());
+        args.push(format!("{}k", options.bitrate_kbps));
+        args.push("-bufsize".to_string());
+        args.push(format!("{}k", options.bitrate_kbps * 2));
     } else if vcodec.contains("nvenc") {
         args.push("-preset".to_string());
         args.push("p1".to_string());
@@ -286,11 +295,12 @@ pub fn build_screen_recording_args(
         args.push("ull".to_string());
         args.push("-pix_fmt".to_string());
         args.push("yuv420p".to_string());
+        args.push("-b:v".to_string());
+        args.push(format!("{}k", options.bitrate_kbps));
+    } else {
+        args.push("-b:v".to_string());
+        args.push(format!("{}k", options.bitrate_kbps));
     }
-
-    // Video Bitrate
-    args.push("-b:v".to_string());
-    args.push(format!("{}k", options.bitrate_kbps));
 
     // Audio encoding settings if enabled
     if has_audio_stream && options.audio_mode != AudioSourceMode::BothMixed {

@@ -802,10 +802,9 @@ function setupToolbarEvents() {
     if (!cropRect) return;
     const croppedDataUrl = getCroppedCanvasDataUrl();
     try {
-      const savedPath = await invoke<string>("save_screenshot_to_history", { dataUrl: croppedDataUrl });
-      alert(`截图已成功保存至:\n${savedPath}`);
+      await invoke<string>("save_screenshot_to_history", { dataUrl: croppedDataUrl });
     } catch (err) {
-      alert(`保存失败: ${err}`);
+      console.error("保存失败:", err);
     }
     cancelSnipping();
   });

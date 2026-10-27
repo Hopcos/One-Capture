@@ -51,6 +51,62 @@ let isRecording = false;
 let currentRecordingType: "screen" | "audio" | null = null;
 let statusPollInterval: any = null;
 
+// Lightweight in-app Toast notification (eliminates browser alert modals!)
+export function showToast(message: string, type: "info" | "success" | "error" = "info", duration = 3000) {
+  let container = document.getElementById("toastContainer");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toastContainer";
+    container.className = "toast-container";
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+
+  let icon = "ℹ️";
+  if (type === "success") icon = "✓";
+  if (type === "error") icon = "⚠️";
+
+  toast.innerHTML = `
+    <span style="font-weight: 700; font-size: 14px;">${icon}</span>
+    <span style="line-height: 1.4;">${message}</span>
+  `;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("toast-out");
+    setTimeout(() => {
+      toast.remove();
+    }, 250);
+  }, duration);
+}
+
+// Reset recording buttons back to initial idle state
+function resetRecordingUI() {
+  isRecording = false;
+  currentRecordingType = null;
+  if (statusPollInterval) {
+    clearInterval(statusPollInterval);
+    statusPollInterval = null;
+  }
+
+  const btnScreen = document.getElementById("btnStartScreenRecord") as HTMLButtonElement;
+  if (btnScreen) {
+    btnScreen.classList.remove("btn-danger");
+    btnScreen.classList.add("btn-primary");
+    btnScreen.innerHTML = `<span>开始录制 (F7)</span>`;
+  }
+
+  const btnAudio = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
+  if (btnAudio) {
+    btnAudio.classList.remove("btn-danger");
+    btnAudio.classList.add("btn-primary");
+    btnAudio.innerHTML = `<span>开始录音 (F8)</span>`;
+  }
+}
+
 // DOM Elements Initialization
 window.addEventListener("DOMContentLoaded", async () => {
   setupTabs();
@@ -67,10 +123,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   await loadMediaGallery();
 
   await listen("media-saved", () => {
+    resetRecordingUI();
     loadMediaGallery();
+    showToast("✓ 录制完成已保存至存储目录", "success");
+  });
+  await listen("recording-stopped", () => {
+    resetRecordingUI();
   });
   await listen("media-deleted", () => {
     loadMediaGallery();
+    showToast("文件已删除", "info");
   });
 });
 
@@ -298,10 +360,10 @@ function setupInteractiveRegionSelector() {
         `;
         btnSelectWindow.style.borderColor = "rgba(244, 63, 94, 0.5)";
       } else {
-        alert("未能检测到当前光标下的窗口，请重试！");
+        showToast("未能检测到当前光标下的窗口，请重试", "error");
       }
     } catch (e) {
-      alert("检测窗口失败: " + e);
+      showToast("检测窗口失败: " + e, "error");
     }
   });
 
@@ -409,10 +471,10 @@ function setupRecordingHandlers() {
       current.hotkeys.stop_record = hkStop.value;
 
       await invoke("save_settings", { settings: current });
-      alert("设置已成功保存！");
+      showToast("✓ 设置已成功保存！", "success");
       await loadSettings();
     } catch (e) {
-      alert("保存设置失败：" + e);
+      showToast("保存设置失败：" + e, "error");
     }
   });
 }
@@ -468,8 +530,16 @@ async function startScreenRecording() {
     btn.innerHTML = `<span>停止录制 (00:00)</span>`;
 
     startStatusPolling();
+
+    // Automatically minimize main window so it does not obstruct the recording area
+    try {
+      const appWin = getCurrentWindow();
+      await appWin.minimize();
+    } catch (e) {
+      console.warn("Failed to minimize window:", e);
+    }
   } catch (err) {
-    alert("启动屏幕录制失败: " + err);
+    showToast("启动屏幕录制失败: " + err, "error");
   }
 }
 
@@ -501,7 +571,7 @@ async function startAudioRecording() {
 
     startStatusPolling();
   } catch (err) {
-    alert("启动声音录制失败: " + err);
+    showToast("启动声音录制失败: " + err, "error");
   }
 }
 
@@ -509,25 +579,12 @@ async function startAudioRecording() {
 async function stopActiveRecording() {
   try {
     const result = await invoke<{ path: string; duration: string; size_bytes: number }>("stop_recording");
-    isRecording = false;
-    currentRecordingType = null;
-    clearInterval(statusPollInterval);
-
-    // Reset buttons
-    const btnScreen = document.getElementById("btnStartScreenRecord") as HTMLButtonElement;
-    btnScreen.classList.remove("btn-danger");
-    btnScreen.classList.add("btn-primary");
-    btnScreen.innerHTML = `<span>开始录制 (F7)</span>`;
-
-    const btnAudio = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
-    btnAudio.classList.remove("btn-danger");
-    btnAudio.classList.add("btn-primary");
-    btnAudio.innerHTML = `<span>开始录音 (F8)</span>`;
-
+    resetRecordingUI();
     await loadMediaGallery();
-    alert(`录制完成并保存！\n时长: ${result.duration}\n路径: ${result.path}`);
+    showToast(`✓ 录制完成已保存！时长: ${result.duration}`, "success", 4000);
   } catch (err) {
-    alert("停止录制失败: " + err);
+    resetRecordingUI();
+    showToast("停止录制失败: " + err, "error");
   }
 }
 
@@ -540,14 +597,13 @@ function startStatusPolling() {
       if (res.status === "recording") {
         if (currentRecordingType === "screen") {
           const btn = document.getElementById("btnStartScreenRecord");
-          if (btn) btn.innerHTML = `<span>停止录屏 (${res.elapsed})</span>`;
+          if (btn) btn.innerHTML = `<span>停止录制 (${res.elapsed})</span>`;
         } else if (currentRecordingType === "audio") {
           const btn = document.getElementById("btnStartAudioRecord");
           if (btn) btn.innerHTML = `<span>停止录音 (${res.elapsed})</span>`;
         }
       } else if (res.status === "idle" && isRecording) {
-        isRecording = false;
-        clearInterval(statusPollInterval);
+        resetRecordingUI();
       }
     } catch (e) {
       // Ignore
@@ -719,7 +775,7 @@ async function loadMediaGallery() {
         try {
           await invoke("open_media_file", { path: item.path });
         } catch (err) {
-          alert("打开文件失败: " + err);
+          showToast("打开文件失败: " + err, "error");
         }
       });
 
@@ -727,18 +783,17 @@ async function loadMediaGallery() {
         try {
           await invoke("open_media_folder", { path: item.path });
         } catch (err) {
-          alert("定位文件失败: " + err);
+          showToast("定位文件失败: " + err, "error");
         }
       });
 
       row.querySelector(".btn-delete-media")?.addEventListener("click", async () => {
-        if (confirm(`确定要删除此文件吗？\n${item.name}`)) {
-          try {
-            await invoke("delete_media_file", { path: item.path });
-            await loadMediaGallery();
-          } catch (err) {
-            alert("删除失败: " + err);
-          }
+        try {
+          await invoke("delete_media_file", { path: item.path });
+          showToast(`已删除: ${item.name}`);
+          await loadMediaGallery();
+        } catch (err) {
+          showToast("删除失败: " + err, "error");
         }
       });
 
