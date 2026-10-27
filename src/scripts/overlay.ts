@@ -14,6 +14,8 @@ interface Point2D {
 }
 
 type AnnotationType = "brush" | "eraser" | "arrow" | "rect" | "text";
+type HandleType = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "inside" | "none";
+type DragMode = "none" | "create" | "move" | "resize";
 
 interface Annotation {
   type: AnnotationType;
@@ -43,10 +45,19 @@ const btnExitOverlay = document.getElementById("btnExitOverlay") as HTMLElement;
 
 let currentMode: "screenshot" | "record_region" = "screenshot";
 let bgImage: HTMLImageElement | null = null;
-let isSelecting = false;
+
+// Selection & Resizing State
+let cropRect: ScreenRect | null = null;
+let dragMode: DragMode = "none";
+let activeHandle: HandleType = "none";
 let startX = 0;
 let startY = 0;
-let cropRect: ScreenRect | null = null;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+let initialRect: ScreenRect = { x: 0, y: 0, width: 0, height: 0 };
+let initialMouse: Point2D = { x: 0, y: 0 };
+
+// Annotation Tools State
 let currentTool: AnnotationType = "brush";
 let currentColor = "#f43f5e";
 let currentStrokeWidth = 3;
@@ -71,6 +82,51 @@ function resizeCanvas() {
   magCanvas.width = 140;
   magCanvas.height = 100;
   render();
+}
+
+/**
+ * Compute the scale factor between physical screen pixels and CSS logical pixels.
+ * This guarantees 1:1 true scale recording without DPI magnification!
+ */
+function getScaleFactor(): { x: number; y: number } {
+  if (bgImage && bgImage.naturalWidth > 0 && canvas.width > 0) {
+    return {
+      x: bgImage.naturalWidth / canvas.width,
+      y: bgImage.naturalHeight / canvas.height,
+    };
+  }
+  const dpr = window.devicePixelRatio || 1;
+  return { x: dpr, y: dpr };
+}
+
+/**
+ * Convert CSS logical pixel rectangle to 1:1 physical screen rectangle.
+ * Even dimensions are enforced for hardware codecs (NVENC, AMF, QSV, x264).
+ */
+function getPhysicalCropRect(): ScreenRect {
+  if (!cropRect) return { x: 0, y: 0, width: 0, height: 0 };
+  const scale = getScaleFactor();
+
+  const normX = Math.min(cropRect.x, cropRect.x + cropRect.width);
+  const normY = Math.min(cropRect.y, cropRect.y + cropRect.height);
+  const normW = Math.abs(cropRect.width);
+  const normH = Math.abs(cropRect.height);
+
+  const physX = Math.round(normX * scale.x);
+  const physY = Math.round(normY * scale.y);
+  let physW = Math.round(normW * scale.x);
+  let physH = Math.round(normH * scale.y);
+
+  // Even dimensions required by video encoders
+  physW = Math.max(2, (physW / 2) * 2);
+  physH = Math.max(2, (physH / 2) * 2);
+
+  return {
+    x: Math.max(0, physX),
+    y: Math.max(0, physY),
+    width: physW,
+    height: physH,
+  };
 }
 
 async function loadFullScreenCapture() {
@@ -103,14 +159,15 @@ function setupEventListeners() {
   listen<{ mode: "screenshot" | "record_region" }>("set-overlay-mode", (event) => {
     currentMode = event.payload.mode;
     if (currentMode === "record_region") {
-      overlayModeTag.textContent = "🎥 录屏选区模式";
-      overlayHintText.textContent = "拖拽框选要录制的屏幕区域 | 按 Enter 或双击确认 | 点击右上角或按 ESC 退出";
+      overlayModeTag.textContent = "🎥 录屏选区模式 (1:1 比例)";
+      overlayHintText.textContent = "拖拽框选录制范围 | 可拖动8个控制把手调整 | 按 Enter 或双击确认 | 按 ESC 退出";
     } else {
       overlayModeTag.textContent = "📸 截图圈选模式";
       overlayHintText.textContent = "按住鼠标左键拖拽选区 | 标注后点击复制或贴图 | 点击右上角或按 ESC 退出";
     }
     cropRect = null;
     annotations = [];
+    dragMode = "none";
     annotToolbar.style.display = "none";
     regionToolbar.style.display = "none";
     render();
@@ -118,26 +175,101 @@ function setupEventListeners() {
 }
 
 function setupExitHandlers() {
-  // Always-visible exit button
   btnExitOverlay?.addEventListener("click", () => {
     cancelSnipping();
   });
 
-  // Right-click anywhere exits immediately
   window.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     cancelSnipping();
   });
 
-  // Double click outside selection box exits immediately
-  canvas.addEventListener("dblclick", (e) => {
+  canvas.addEventListener("dblclick", () => {
     if (!cropRect) {
       cancelSnipping();
     } else if (currentMode === "record_region") {
-      // In record region mode, double click confirms the selection!
       confirmRecordingRegion();
     }
   });
+}
+
+// 8 Control Handles Geometry & Hit-Testing
+function getHandlePositions(rect: ScreenRect): Record<HandleType, Point2D> {
+  const x = Math.min(rect.x, rect.x + rect.width);
+  const y = Math.min(rect.y, rect.y + rect.height);
+  const w = Math.abs(rect.width);
+  const h = Math.abs(rect.height);
+
+  return {
+    nw: { x, y },
+    n: { x: x + w / 2, y },
+    ne: { x: x + w, y },
+    e: { x: x + w, y: y + h / 2 },
+    se: { x: x + w, y: y + h },
+    s: { x: x + w / 2, y: y + h },
+    sw: { x, y: y + h },
+    w: { x, y: y + h / 2 },
+    inside: { x: x + w / 2, y: y + h / 2 },
+    none: { x: 0, y: 0 },
+  };
+}
+
+function hitTestHandle(mx: number, my: number): HandleType {
+  if (!cropRect || cropRect.width === 0 || cropRect.height === 0) {
+    return "none";
+  }
+
+  const handles = getHandlePositions(cropRect);
+  const hitRadius = 10;
+
+  // Check 8 handle points first
+  const handleKeys: HandleType[] = ["nw", "ne", "se", "sw", "n", "s", "e", "w"];
+  for (const k of handleKeys) {
+    const pt = handles[k];
+    if (Math.hypot(mx - pt.x, my - pt.y) <= hitRadius) {
+      return k;
+    }
+  }
+
+  // Check inside box for moving
+  const x = Math.min(cropRect.x, cropRect.x + cropRect.width);
+  const y = Math.min(cropRect.y, cropRect.y + cropRect.height);
+  const w = Math.abs(cropRect.width);
+  const h = Math.abs(cropRect.height);
+
+  if (mx >= x && mx <= x + w && my >= y && my <= y + h) {
+    return "inside";
+  }
+
+  return "none";
+}
+
+function updateCursor(handle: HandleType) {
+  if (dragMode !== "none") return;
+
+  switch (handle) {
+    case "nw":
+    case "se":
+      canvas.style.cursor = "nwse-resize";
+      break;
+    case "ne":
+    case "sw":
+      canvas.style.cursor = "nesw-resize";
+      break;
+    case "n":
+    case "s":
+      canvas.style.cursor = "ns-resize";
+      break;
+    case "e":
+    case "w":
+      canvas.style.cursor = "ew-resize";
+      break;
+    case "inside":
+      canvas.style.cursor = currentMode === "record_region" ? "move" : "default";
+      break;
+    default:
+      canvas.style.cursor = "crosshair";
+  }
 }
 
 function render() {
@@ -147,48 +279,52 @@ function render() {
     ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
   }
 
-  if (cropRect && cropRect.width > 0 && cropRect.height > 0) {
+  if (cropRect && Math.abs(cropRect.width) > 0 && Math.abs(cropRect.height) > 0) {
+    const normX = Math.min(cropRect.x, cropRect.x + cropRect.width);
+    const normY = Math.min(cropRect.y, cropRect.y + cropRect.height);
+    const normW = Math.abs(cropRect.width);
+    const normH = Math.abs(cropRect.height);
+    const phys = getPhysicalCropRect();
+
+    // Semi-transparent mask outside crop
     ctx.save();
     ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
     ctx.beginPath();
     ctx.rect(0, 0, canvas.width, canvas.height);
-    ctx.rect(cropRect.x, cropRect.y, cropRect.width, cropRect.height);
+    ctx.rect(normX, normY, normW, normH);
     ctx.fill("evenodd");
 
-    // Border
+    // Selection border
     ctx.strokeStyle = currentMode === "record_region" ? "#06b6d4" : "#38bdf8";
     ctx.lineWidth = 2;
     if (currentMode === "record_region") {
       ctx.setLineDash([6, 6]);
     }
-    ctx.strokeRect(cropRect.x, cropRect.y, cropRect.width, cropRect.height);
+    ctx.strokeRect(normX, normY, normW, normH);
     ctx.setLineDash([]);
 
-    // Dimension label
+    // 1:1 Physical Resolution & Offset Label
     ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
-    ctx.fillRect(cropRect.x, Math.max(0, cropRect.y - 28), 120, 24);
+    ctx.fillRect(normX, Math.max(0, normY - 28), 150, 24);
     ctx.fillStyle = currentMode === "record_region" ? "#06b6d4" : "#38bdf8";
     ctx.font = "bold 12px monospace";
-    ctx.fillText(`${cropRect.width} × ${cropRect.height}`, cropRect.x + 8, Math.max(16, cropRect.y - 12));
+    ctx.fillText(`${phys.width} × ${phys.height} px (1:1)`, normX + 8, Math.max(16, normY - 12));
 
-    // Handles (8 corners and midpoints)
-    const handles = [
-      { x: cropRect.x, y: cropRect.y },
-      { x: cropRect.x + cropRect.width / 2, y: cropRect.y },
-      { x: cropRect.x + cropRect.width, y: cropRect.y },
-      { x: cropRect.x + cropRect.width, y: cropRect.y + cropRect.height / 2 },
-      { x: cropRect.x + cropRect.width, y: cropRect.y + cropRect.height },
-      { x: cropRect.x + cropRect.width / 2, y: cropRect.y + cropRect.height },
-      { x: cropRect.x, y: cropRect.y + cropRect.height },
-      { x: cropRect.x, y: cropRect.y + cropRect.height / 2 },
-    ];
+    // Draw 8 Resizing Handles
+    const handles = getHandlePositions({ x: normX, y: normY, width: normW, height: normH });
+    const handleKeys: HandleType[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
-    ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "#06b6d4";
-    ctx.lineWidth = 1.5;
-    handles.forEach((h) => {
-      ctx.fillRect(h.x - 4, h.y - 4, 8, 8);
-      ctx.strokeRect(h.x - 4, h.y - 4, 8, 8);
+    handleKeys.forEach((k) => {
+      const pt = handles[k];
+      ctx.save();
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#06b6d4";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
     });
 
     ctx.restore();
@@ -261,91 +397,98 @@ function setupCanvasEvents() {
       return;
     }
 
-    if (!cropRect || currentMode === "record_region") {
-      isSelecting = true;
-      startX = e.clientX;
-      startY = e.clientY;
+    const mx = e.clientX;
+    const my = e.clientY;
+    const hit = hitTestHandle(mx, my);
+
+    if (cropRect && (currentMode === "record_region" || hit !== "none")) {
+      if (hit === "inside") {
+        // Drag to move whole selection box
+        dragMode = "move";
+        dragOffsetX = mx - cropRect.x;
+        dragOffsetY = my - cropRect.y;
+        annotToolbar.style.display = "none";
+        regionToolbar.style.display = "none";
+      } else if (hit !== "none") {
+        // Drag 8 handles to resize selection box
+        dragMode = "resize";
+        activeHandle = hit;
+        initialRect = { ...cropRect };
+        initialMouse = { x: mx, y: my };
+        annotToolbar.style.display = "none";
+        regionToolbar.style.display = "none";
+      } else if (currentMode === "record_region") {
+        // Click outside in record_region creates new selection
+        dragMode = "create";
+        startX = mx;
+        startY = my;
+        cropRect = { x: startX, y: startY, width: 0, height: 0 };
+        annotToolbar.style.display = "none";
+        regionToolbar.style.display = "none";
+      } else {
+        // Drawing annotations inside screenshot mode
+        isDrawingAnnotation = true;
+        handleAnnotationMouseDown(mx, my);
+      }
+    } else if (!cropRect) {
+      // First time creating selection
+      dragMode = "create";
+      startX = mx;
+      startY = my;
       cropRect = { x: startX, y: startY, width: 0, height: 0 };
       magnifier.style.display = "none";
-    } else {
-      isDrawingAnnotation = true;
-      const pt: Point2D = { x: e.clientX, y: e.clientY };
-
-      if (currentTool === "brush") {
-        currentAnnotation = {
-          type: "brush",
-          color: currentColor,
-          strokeWidth: currentStrokeWidth,
-          points: [pt],
-        };
-      } else if (currentTool === "rect") {
-        currentAnnotation = {
-          type: "rect",
-          color: currentColor,
-          strokeWidth: currentStrokeWidth,
-          rect: { x: pt.x, y: pt.y, width: 0, height: 0 },
-        };
-      } else if (currentTool === "arrow") {
-        currentAnnotation = {
-          type: "arrow",
-          color: currentColor,
-          strokeWidth: currentStrokeWidth,
-          start: pt,
-          end: pt,
-        };
-      } else if (currentTool === "eraser") {
-        eraseAtPoint(pt, 12);
-      } else if (currentTool === "text") {
-        const textStr = prompt("请输入文字标注内容：");
-        if (textStr) {
-          annotations.push({
-            type: "text",
-            color: currentColor,
-            strokeWidth: 2,
-            start: pt,
-            text: textStr,
-          });
-          render();
-        }
-        isDrawingAnnotation = false;
-      }
     }
   });
 
   canvas.addEventListener("mousemove", (e) => {
-    const x = e.clientX;
-    const y = e.clientY;
+    const mx = e.clientX;
+    const my = e.clientY;
 
-    if (!cropRect && !isSelecting) {
-      updateMagnifier(x, y);
-    }
+    if (dragMode === "none") {
+      const hit = hitTestHandle(mx, my);
+      updateCursor(hit);
 
-    if (isSelecting && cropRect) {
-      cropRect.x = Math.min(startX, x);
-      cropRect.y = Math.min(startY, y);
-      cropRect.width = Math.abs(x - startX);
-      cropRect.height = Math.abs(y - startY);
+      if (!cropRect) {
+        updateMagnifier(mx, my);
+      }
+    } else if (dragMode === "create" && cropRect) {
+      cropRect.x = Math.min(startX, mx);
+      cropRect.y = Math.min(startY, my);
+      cropRect.width = Math.abs(mx - startX);
+      cropRect.height = Math.abs(my - startY);
+      render();
+    } else if (dragMode === "move" && cropRect) {
+      const newX = mx - dragOffsetX;
+      const newY = my - dragOffsetY;
+      cropRect.x = Math.max(0, Math.min(canvas.width - cropRect.width, newX));
+      cropRect.y = Math.max(0, Math.min(canvas.height - cropRect.height, newY));
+      render();
+    } else if (dragMode === "resize" && cropRect) {
+      const dx = mx - initialMouse.x;
+      const dy = my - initialMouse.y;
+      handleResize(dx, dy);
       render();
     } else if (isDrawingAnnotation && currentAnnotation) {
-      const pt: Point2D = { x, y };
-
-      if (currentAnnotation.type === "brush" && currentAnnotation.points) {
-        currentAnnotation.points.push(pt);
-      } else if (currentAnnotation.type === "rect" && currentAnnotation.rect) {
-        currentAnnotation.rect.width = x - currentAnnotation.rect.x;
-        currentAnnotation.rect.height = y - currentAnnotation.rect.y;
-      } else if (currentAnnotation.type === "arrow") {
-        currentAnnotation.end = pt;
-      } else if (currentTool === "eraser") {
-        eraseAtPoint(pt, 12);
-      }
+      handleAnnotationMouseMove(mx, my);
       render();
     }
   });
 
   canvas.addEventListener("mouseup", () => {
-    if (isSelecting && cropRect) {
-      isSelecting = false;
+    if (dragMode !== "none" && cropRect) {
+      dragMode = "none";
+      activeHandle = "none";
+
+      // Normalize rect
+      if (cropRect.width < 0) {
+        cropRect.x += cropRect.width;
+        cropRect.width = Math.abs(cropRect.width);
+      }
+      if (cropRect.height < 0) {
+        cropRect.y += cropRect.height;
+        cropRect.height = Math.abs(cropRect.height);
+      }
+
       if (cropRect.width < 10 || cropRect.height < 10) {
         cropRect = null;
         annotToolbar.style.display = "none";
@@ -363,6 +506,133 @@ function setupCanvasEvents() {
       render();
     }
   });
+}
+
+function handleResize(dx: number, dy: number) {
+  if (!cropRect) return;
+
+  const r = initialRect;
+  switch (activeHandle) {
+    case "e": {
+      cropRect.width = Math.max(10, r.width + dx);
+      break;
+    }
+    case "w": {
+      const newW = r.width - dx;
+      if (newW >= 10) {
+        cropRect.x = r.x + dx;
+        cropRect.width = newW;
+      }
+      break;
+    }
+    case "s": {
+      cropRect.height = Math.max(10, r.height + dy);
+      break;
+    }
+    case "n": {
+      const newH = r.height - dy;
+      if (newH >= 10) {
+        cropRect.y = r.y + dy;
+        cropRect.height = newH;
+      }
+      break;
+    }
+    case "se": {
+      cropRect.width = Math.max(10, r.width + dx);
+      cropRect.height = Math.max(10, r.height + dy);
+      break;
+    }
+    case "nw": {
+      const newW = r.width - dx;
+      const newH = r.height - dy;
+      if (newW >= 10) {
+        cropRect.x = r.x + dx;
+        cropRect.width = newW;
+      }
+      if (newH >= 10) {
+        cropRect.y = r.y + dy;
+        cropRect.height = newH;
+      }
+      break;
+    }
+    case "ne": {
+      cropRect.width = Math.max(10, r.width + dx);
+      const newH = r.height - dy;
+      if (newH >= 10) {
+        cropRect.y = r.y + dy;
+        cropRect.height = newH;
+      }
+      break;
+    }
+    case "sw": {
+      const newW = r.width - dx;
+      if (newW >= 10) {
+        cropRect.x = r.x + dx;
+        cropRect.width = newW;
+      }
+      cropRect.height = Math.max(10, r.height + dy);
+      break;
+    }
+  }
+}
+
+function handleAnnotationMouseDown(mx: number, my: number) {
+  const pt: Point2D = { x: mx, y: my };
+
+  if (currentTool === "brush") {
+    currentAnnotation = {
+      type: "brush",
+      color: currentColor,
+      strokeWidth: currentStrokeWidth,
+      points: [pt],
+    };
+  } else if (currentTool === "rect") {
+    currentAnnotation = {
+      type: "rect",
+      color: currentColor,
+      strokeWidth: currentStrokeWidth,
+      rect: { x: pt.x, y: pt.y, width: 0, height: 0 },
+    };
+  } else if (currentTool === "arrow") {
+    currentAnnotation = {
+      type: "arrow",
+      color: currentColor,
+      strokeWidth: currentStrokeWidth,
+      start: pt,
+      end: pt,
+    };
+  } else if (currentTool === "eraser") {
+    eraseAtPoint(pt, 12);
+  } else if (currentTool === "text") {
+    const textStr = prompt("请输入文字标注内容：");
+    if (textStr) {
+      annotations.push({
+        type: "text",
+        color: currentColor,
+        strokeWidth: 2,
+        start: pt,
+        text: textStr,
+      });
+      render();
+    }
+    isDrawingAnnotation = false;
+  }
+}
+
+function handleAnnotationMouseMove(mx: number, my: number) {
+  if (!currentAnnotation) return;
+  const pt: Point2D = { x: mx, y: my };
+
+  if (currentAnnotation.type === "brush" && currentAnnotation.points) {
+    currentAnnotation.points.push(pt);
+  } else if (currentAnnotation.type === "rect" && currentAnnotation.rect) {
+    currentAnnotation.rect.width = mx - currentAnnotation.rect.x;
+    currentAnnotation.rect.height = my - currentAnnotation.rect.y;
+  } else if (currentAnnotation.type === "arrow") {
+    currentAnnotation.end = pt;
+  } else if (currentTool === "eraser") {
+    eraseAtPoint(pt, 12);
+  }
 }
 
 function updateMagnifier(x: number, y: number) {
@@ -405,20 +675,26 @@ function updateMagnifier(x: number, y: number) {
 
 function positionToolbar() {
   if (!cropRect) return;
+  const phys = getPhysicalCropRect();
+
+  const normX = Math.min(cropRect.x, cropRect.x + cropRect.width);
+  const normY = Math.min(cropRect.y, cropRect.y + cropRect.height);
+  const normW = Math.abs(cropRect.width);
+  const normH = Math.abs(cropRect.height);
 
   if (currentMode === "record_region") {
     annotToolbar.style.display = "none";
     regionToolbar.style.display = "flex";
-    recordRegionDim.textContent = `${cropRect.width} × ${cropRect.height}`;
+    recordRegionDim.textContent = `${phys.width} × ${phys.height} px`;
 
-    const tbWidth = 360;
-    let tx = cropRect.x + cropRect.width - tbWidth;
+    const tbWidth = 380;
+    let tx = normX + normW - tbWidth;
     if (tx < 10) tx = 10;
     if (tx + tbWidth > window.innerWidth) tx = window.innerWidth - tbWidth - 10;
 
-    let ty = cropRect.y + cropRect.height + 12;
+    let ty = normY + normH + 12;
     if (ty + 60 > window.innerHeight) {
-      ty = Math.max(10, cropRect.y - 60);
+      ty = Math.max(10, normY - 60);
     }
 
     regionToolbar.style.left = `${tx}px`;
@@ -428,13 +704,13 @@ function positionToolbar() {
     annotToolbar.style.display = "flex";
 
     const tbWidth = 420;
-    let tx = cropRect.x + cropRect.width - tbWidth;
+    let tx = normX + normW - tbWidth;
     if (tx < 10) tx = 10;
     if (tx + tbWidth > window.innerWidth) tx = window.innerWidth - tbWidth - 10;
 
-    let ty = cropRect.y + cropRect.height + 12;
+    let ty = normY + normH + 12;
     if (ty + 60 > window.innerHeight) {
-      ty = Math.max(10, cropRect.y - 60);
+      ty = Math.max(10, normY - 60);
     }
 
     annotToolbar.style.left = `${tx}px`;
@@ -494,13 +770,14 @@ function setupToolbarEvents() {
   // Action: Pin
   document.getElementById("btnPin")?.addEventListener("click", async () => {
     if (!cropRect) return;
+    const phys = getPhysicalCropRect();
     const croppedDataUrl = getCroppedCanvasDataUrl();
     await invoke("create_pin_window", {
       imageDataUrl: croppedDataUrl,
-      x: Math.round(cropRect.x),
-      y: Math.round(cropRect.y),
-      width: Math.round(cropRect.width),
-      height: Math.round(cropRect.height),
+      x: phys.x,
+      y: phys.y,
+      width: phys.width,
+      height: phys.height,
     });
     cancelSnipping();
   });
@@ -541,33 +818,31 @@ function setupToolbarEvents() {
 
 async function confirmRecordingRegion() {
   if (!cropRect) return;
-  await invoke("set_recording_region", {
-    rect: {
-      x: Math.round(cropRect.x),
-      y: Math.round(cropRect.y),
-      width: Math.round(cropRect.width),
-      height: Math.round(cropRect.height),
-    },
-  });
+  // Send 1:1 physical pixel coordinates to Rust for exact 1:1 video capture!
+  const phys = getPhysicalCropRect();
+  await invoke("set_recording_region", { rect: phys });
 }
 
 function getCroppedCanvasDataUrl(): string {
-  if (!cropRect) return "";
+  if (!cropRect || !bgImage) return "";
+  const phys = getPhysicalCropRect();
+
   const tempCanvas = document.createElement("canvas");
-  tempCanvas.width = cropRect.width;
-  tempCanvas.height = cropRect.height;
+  tempCanvas.width = phys.width;
+  tempCanvas.height = phys.height;
   const tCtx = tempCanvas.getContext("2d")!;
 
+  // 1:1 high-resolution crop from physical background image
   tCtx.drawImage(
-    canvas,
-    cropRect.x,
-    cropRect.y,
-    cropRect.width,
-    cropRect.height,
+    bgImage,
+    phys.x,
+    phys.y,
+    phys.width,
+    phys.height,
     0,
     0,
-    cropRect.width,
-    cropRect.height
+    phys.width,
+    phys.height
   );
 
   return tempCanvas.toDataURL("image/png");
@@ -576,6 +851,8 @@ function getCroppedCanvasDataUrl(): string {
 function cancelSnipping() {
   cropRect = null;
   annotations = [];
+  dragMode = "none";
+  activeHandle = "none";
   annotToolbar.style.display = "none";
   regionToolbar.style.display = "none";
   magnifier.style.display = "none";
@@ -597,6 +874,16 @@ function setupKeyboardEvents() {
     } else if (e.key === "s" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       document.getElementById("btnSave")?.click();
+    } else if (cropRect && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      // Precision 1px (or 10px with Shift) keyboard nudging
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      if (e.key === "ArrowUp") cropRect.y = Math.max(0, cropRect.y - step);
+      if (e.key === "ArrowDown") cropRect.y = Math.min(canvas.height - cropRect.height, cropRect.y + step);
+      if (e.key === "ArrowLeft") cropRect.x = Math.max(0, cropRect.x - step);
+      if (e.key === "ArrowRight") cropRect.x = Math.min(canvas.width - cropRect.width, cropRect.x + step);
+      positionToolbar();
+      render();
     }
   });
 }
