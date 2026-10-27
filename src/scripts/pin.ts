@@ -18,6 +18,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   const pinId = params.get("id");
   if (!pinId) return;
 
+  // Prevent browser default HTML5 image dragging
+  window.addEventListener("dragstart", (e) => e.preventDefault());
+
   const pinContainer = document.getElementById("pinContainer") as HTMLElement;
   const pinImage = document.getElementById("pinImage") as HTMLImageElement;
   const btnClose = document.getElementById("btnClosePin") as HTMLElement;
@@ -37,22 +40,54 @@ window.addEventListener("DOMContentLoaded", async () => {
     console.error("Failed to fetch pin data:", err);
   }
 
-  // Native window dragging on mousedown (left click)
-  pinContainer.addEventListener("mousedown", async (e) => {
+  // Dual-mode dragging:
+  // 1. Native OS startDragging()
+  // 2. High precision delta mouse tracking via Rust IPC move_pin_by()
+  const appWin = getCurrentWindow();
+  let isTrackingDrag = false;
+  let lastScreenX = 0;
+  let lastScreenY = 0;
+
+  pinContainer.addEventListener("mousedown", (e) => {
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     if (target.closest(".pin-btn") || target.closest(".pin-actions")) return;
 
+    // Trigger native OS window dragging
     try {
-      await invoke("start_pin_drag", { id: pinId });
+      appWin.startDragging().catch(() => {});
     } catch {
-      try {
-        const appWin = getCurrentWindow();
-        await appWin.startDragging();
-      } catch (err) {
-        console.error("Window drag error:", err);
-      }
+      // Ignore
     }
+
+    isTrackingDrag = true;
+    lastScreenX = e.screenX;
+    lastScreenY = e.screenY;
+  });
+
+  window.addEventListener("mousemove", async (e) => {
+    if (!isTrackingDrag || e.buttons !== 1) {
+      isTrackingDrag = false;
+      return;
+    }
+
+    const dx = e.screenX - lastScreenX;
+    const dy = e.screenY - lastScreenY;
+
+    if (dx === 0 && dy === 0) return;
+
+    lastScreenX = e.screenX;
+    lastScreenY = e.screenY;
+
+    try {
+      await invoke("move_pin_by", { id: pinId, deltaX: dx, deltaY: dy });
+    } catch (err) {
+      console.error("move error:", err);
+    }
+  });
+
+  window.addEventListener("mouseup", () => {
+    isTrackingDrag = false;
   });
 
   // Mouse wheel zoom (20% - 500%)

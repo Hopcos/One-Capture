@@ -36,6 +36,7 @@ pub fn run() {
             // Pin commands
             commands::create_pin_window,
             commands::start_pin_drag,
+            commands::move_pin_by,
             commands::get_pin_data,
             commands::close_pin_window,
             commands::update_pin_zoom,

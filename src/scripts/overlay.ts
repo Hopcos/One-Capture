@@ -73,7 +73,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   setupCanvasEvents();
   setupKeyboardEvents();
   setupEventListeners();
-  await loadFullScreenCapture();
 });
 
 function resizeCanvas() {

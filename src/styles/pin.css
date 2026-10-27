@@ -3,6 +3,7 @@
   margin: 0;
   padding: 0;
   user-select: none;
+  -webkit-user-drag: none;
 }
 
 body, html {
@@ -22,11 +23,15 @@ body, html {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: move;
+  cursor: grab;
   border-radius: 6px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   transition: opacity 0.15s ease;
+}
+
+.pin-container:active {
+  cursor: grabbing;
 }
 
 .pin-image {
@@ -35,6 +40,7 @@ body, html {
   object-fit: fill;
   pointer-events: none;
   border-radius: 6px;
+  -webkit-user-drag: none;
 }
 
 /* Hover action overlay */

@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" draggable="false">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OneCapture Pin</title>
   <link rel="stylesheet" href="./src/styles/pin.css" />
 </head>
-<body>
-  <div class="pin-container" id="pinContainer" data-tauri-drag-region>
-    <img id="pinImage" class="pin-image" src="" alt="Pinned Screenshot" />
+<body draggable="false">
+  <div class="pin-container" id="pinContainer" data-tauri-drag-region draggable="false">
+    <img id="pinImage" class="pin-image" src="" alt="Pinned Screenshot" data-tauri-drag-region draggable="false" />
 
     <!-- Overlay Actions -->
     <div class="pin-actions">

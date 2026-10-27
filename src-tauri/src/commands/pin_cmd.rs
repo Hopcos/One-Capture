@@ -41,6 +41,20 @@ pub fn start_pin_drag(app: AppHandle, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn move_pin_by(app: AppHandle, id: String, delta_x: f64, delta_y: f64) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window(&id) {
+        if let Ok(factor) = win.scale_factor() {
+            if let Ok(phys_pos) = win.outer_position() {
+                let log_pos = phys_pos.to_logical::<f64>(factor);
+                let new_log = tauri::LogicalPosition::new(log_pos.x + delta_x, log_pos.y + delta_y);
+                let _ = win.set_position(tauri::Position::Logical(new_log));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_pin_data(pin_mgr: State<'_, PinManager>, id: String) -> Result<PinItem, String> {
     pin_mgr
         .get_pin(&id)
