@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OneCapture - 一站式捕捉套件</title>
+  <link rel="stylesheet" href="./src/styles/main.css" />
+</head>
+<body>
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polygon points="10 8 16 12 10 16 10 8"></polygon>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">OneCapture</div>
+        <div style="font-size: 11px; color: var(--text-muted);">高性能捕捉大师</div>
+      </div>
+    </div>
+
+    <nav class="nav-menu">
+      <div class="nav-item active" data-tab="screen">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span>屏幕录制</span>
+        <span class="nav-badge hotkey-tag" id="hkScreenBadge">F7</span>
+      </div>
+
+      <div class="nav-item" data-tab="audio">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        <span>声音录制</span>
+        <span class="nav-badge hotkey-tag" id="hkAudioBadge">F8</span>
+      </div>
+
+      <div class="nav-item" data-tab="screenshot">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m14.31 8 5.74 9.94M9.69 8h11.48M7.38 12l5.74-9.94M9.69 16 3.95 6.06M14.31 16H2.83M16.62 12l-5.74 9.94"/></svg>
+        <span>区域截图与贴图</span>
+        <span class="nav-badge hotkey-tag" id="hkSnipBadge">F1</span>
+      </div>
+
+      <div class="nav-item" data-tab="gallery">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <span>录制与截图历史</span>
+      </div>
+
+      <div class="nav-item" data-tab="settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>通用与快捷键设置</span>
+      </div>
+    </nav>
+
+    <!-- Storage Info Footer -->
+    <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+      <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">输出存储目录</div>
+      <div id="sidebarOutputPath" style="font-size: 11px; color: var(--text-secondary); word-break: break-all; cursor: pointer;">正在读取...</div>
+    </div>
+  </aside>
+
+  <!-- Main Viewports -->
+  <main class="main-view">
+    <!-- View 1: Screen Recording -->
+    <section id="tab-screen" class="tab-content">
+      <div class="view-header">
+        <div>
+          <h1 class="view-title">屏幕录制</h1>
+          <p class="view-subtitle">支持全屏/区域窗口选定、多声源混合、硬件加速编码与定时窗口</p>
+        </div>
+        <button id="btnStartScreenRecord" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>开始录制 (F7)</span>
+        </button>
+      </div>
+
+      <div class="grid-2">
+        <!-- Capture Region Card -->
+        <div class="card">
+          <div class="card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
+            <span>录制范围模式</span>
+          </div>
+
+          <div class="form-group">
+            <div class="pill-group" id="screenAreaPills">
+              <div class="pill-option active" data-value="fullscreen">全屏录制</div>
+              <div class="pill-option" data-value="custom_region">圈定区域</div>
+              <div class="pill-option" data-value="window">选定窗口</div>
+            </div>
+          </div>
+
+          <div id="customRegionFields" style="display: none;" class="form-group">
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <button id="btnTriggerSelectRegion" type="button" class="btn btn-secondary" style="flex: 1; padding: 8px 12px; font-size: 12px; border-color: var(--accent-cyan); color: #38bdf8;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 3H3v18h18V3z"/><path d="M9 3v18"/><path d="M15 3v18"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+                <span>🖱️ 拖拽圈选录制区域</span>
+              </button>
+              <button id="btnTriggerSelectWindow" type="button" class="btn btn-secondary" style="flex: 1; padding: 8px 12px; font-size: 12px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                <span>🪟 智能选定目标窗口</span>
+              </button>
+            </div>
+            <div id="selectedRegionBadge" style="display: none; padding: 6px 12px; background: rgba(6, 182, 212, 0.15); border: 1px solid rgba(6, 182, 212, 0.35); border-radius: 6px; font-size: 12px; color: #38bdf8; font-weight: 600; margin-bottom: 8px;">
+              ✓ 当前已选定区域: <span id="badgeDimText">1280 × 720</span>
+            </div>
+            <label class="form-label">指定坐标与尺寸 (X, Y, W, H)</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="number" id="regionX" placeholder="X" value="0" style="width: 25%;" />
+              <input type="number" id="regionY" placeholder="Y" value="0" style="width: 25%;" />
+              <input type="number" id="regionW" placeholder="宽度" value="1280" style="width: 25%;" />
+              <input type="number" id="regionH" placeholder="高度" value="720" style="width: 25%;" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Audio Source Card -->
+        <div class="card">
+          <div class="card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/></svg>
+            <span>录制声源选择</span>
+          </div>
+
+          <div class="form-group">
+            <div class="pill-group" id="screenAudioPills">
+              <div class="pill-option active" data-value="both_mixed">🎙️+🔊 混音录制</div>
+              <div class="pill-option" data-value="speaker_only">🔊 仅系统声音</div>
+              <div class="pill-option" data-value="mic_only">🎙️ 仅麦克风</div>
+              <div class="pill-option" data-value="mute">🔇 静音录屏</div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">声源音量实时指示</label>
+            <div class="vu-meter">
+              <div class="vu-fill" id="screenAudioVu"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Video Encoding & Format Card -->
+        <div class="card">
+          <div class="card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            <span>视频编码与格式配置</span>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">封装格式</label>
+              <select id="videoFormatSelect">
+                <option value="mp4" selected>MP4 (通用标准格式)</option>
+                <option value="mkv">MKV (高可靠抗崩溃)</option>
+                <option value="webm">WebM (高压缩率)</option>
+                <option value="mov">MOV (Apple 兼容)</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">视频编码器</label>
+              <select id="videoCodecSelect">
+                <option value="auto" selected>自动 (优先硬件加速)</option>
+                <option value="h264_nvenc">NVIDIA NVENC (极低CPU)</option>
+                <option value="hevc_nvenc">NVIDIA H.265 (超清高压缩)</option>
+                <option value="h264_amf">AMD AMF 硬件加速</option>
+                <option value="h264_qsv">Intel QuickSync 硬件加速</option>
+                <option value="libx264">x264 CPU 高兼容编码</option>
+                <option value="libx265">x265 CPU HEVC 编码</option>
+                <option value="libvpx-vp9">VP9 Web 编码</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">帧率 (FPS)</label>
+              <select id="videoFpsSelect">
+                <option value="60" selected>60 FPS (极致流畅)</option>
+                <option value="30">30 FPS (标准省空间)</option>
+                <option value="120">120 FPS (电竞高刷)</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">视频码率</label>
+              <select id="videoBitrateSelect">
+                <option value="12000">12000 Kbps (原画级无损感)</option>
+                <option value="6000" selected>6000 Kbps (高清均衡推荐)</option>
+                <option value="3000">3000 Kbps (紧凑小体积)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Time Window / Duration Limit Card -->
+        <div class="card">
+          <div class="card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>时间窗口范围控制 (定时录制)</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">预设时间窗口范围</label>
+            <div class="pill-group" id="screenTimerPills">
+              <div class="pill-option active" data-value="0">无限制 (手动停止)</div>
+              <div class="pill-option" data-value="30">30 秒</div>
+              <div class="pill-option" data-value="300">5 分钟</div>
+              <div class="pill-option" data-value="1800">30 分钟</div>
+              <div class="pill-option" data-value="custom">自定义</div>
+            </div>
+          </div>
+
+          <div id="customTimerField" style="display: none;" class="form-group">
+            <label class="form-label">自定义录制上限时长 (秒)</label>
+            <input type="number" id="customTimeLimitSecs" value="60" min="1" max="86400" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- View 2: Audio Recording -->
+    <section id="tab-audio" class="tab-content" style="display: none;">
+      <div class="view-header">
+        <div>
+          <h1 class="view-title">独立声音录制</h1>
+          <p class="view-subtitle">专业级音频捕捉，支持输入与输出双通道混音与无损音频格式</p>
+        </div>
+        <button id="btnStartAudioRecord" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>开始录音 (F8)</span>
+        </button>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/></svg>
+            <span>录音声源模式</span>
+          </div>
+
+          <div class="form-group">
+            <div class="pill-group" id="audioOnlySourcePills">
+              <div class="pill-option active" data-value="both_mixed">🎙️+🔊 输入输出混音</div>
+              <div class="pill-option" data-value="speaker_only">🔊 仅电脑扬声器</div>
+              <div class="pill-option" data-value="mic_only">🎙️ 仅麦克风输入</div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">实时波形功率电平</label>
+            <div class="vu-meter">
+              <div class="vu-fill" id="audioTabVu"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+            <span>音频格式与编码质量</span>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">音频格式</label>
+              <select id="audioFormatSelect">
+                <option value="aac" selected>AAC (.m4a 高兼容优质)</option>
+                <option value="mp3">MP3 (.mp3 经典流行)</option>
+                <option value="wav">WAV (.wav 无损PCM)</option>
+                <option value="flac">FLAC (.flac 无损压缩)</option>
+                <option value="opus">Opus (.opus 现代超低延迟)</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">音频码率</label>
+              <select id="audioBitrateSelect">
+                <option value="320">320 Kbps (母带级体验)</option>
+                <option value="256">256 Kbps (超高清)</option>
+                <option value="192" selected>192 Kbps (标准高保真)</option>
+                <option value="128">128 Kbps (人声语音)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">采样率</label>
+            <select id="audioSampleRateSelect">
+              <option value="48000" selected>48,000 Hz (广播标准推荐)</option>
+              <option value="44100">44,100 Hz (CD 音质标准)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- View 3: Screenshot & Multi-Pins -->
+    <section id="tab-screenshot" class="tab-content" style="display: none;">
+      <div class="view-header">
+        <div>
+          <h1 class="view-title">区域截图与桌面贴图</h1>
+          <p class="view-subtitle">圈定区域、多张悬浮贴图、拖动缩放、橡皮擦与箭头画笔标注</p>
+        </div>
+        <button id="btnQuickSnip" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="m14.31 8 5.74 9.94M9.69 8h11.48M7.38 12l5.74-9.94M9.69 16 3.95 6.06M14.31 16H2.83M16.62 12l-5.74 9.94"/></svg>
+          <span>立即截屏圈选 (F1)</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <span>当前活动桌面贴图列表 (多张管理)</span>
+        </div>
+        <div id="pinsListContainer" style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--text-secondary);">
+          <div>暂无正在悬浮展示的贴图。截屏后点击工具栏“贴图”按钮即可将截图悬浮固定于桌面！</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- View 4: Gallery & History -->
+    <section id="tab-gallery" class="tab-content" style="display: none;">
+      <div class="view-header">
+        <div>
+          <h1 class="view-title">录像与截图记录</h1>
+          <p class="view-subtitle">查看最新生成的视频录像、音频录音与截图文件</p>
+        </div>
+        <button id="btnOpenFolder" class="btn btn-secondary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span>在文件资源管理器中打开</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">历史媒体记录</div>
+        <div id="galleryList" style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="color: var(--text-muted); font-size: 13px;">录制或截图完成后将自动汇总在此处。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- View 5: Settings & Hotkeys -->
+    <section id="tab-settings" class="tab-content" style="display: none;">
+      <div class="view-header">
+        <div>
+          <h1 class="view-title">通用与快捷键设置</h1>
+          <p class="view-subtitle">自定义全局快捷键组合、桌面悬浮工具条以及存储路径</p>
+        </div>
+        <button id="btnSaveSettings" class="btn btn-primary">保存设置配置</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">全局功能快捷键</div>
+          <div class="form-group">
+            <label class="form-label">快速截图圈选</label>
+            <input type="text" id="hkSnip" value="F1" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">开始/暂停屏幕录制</label>
+            <input type="text" id="hkScreen" value="F7" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">开始/暂停声音录制</label>
+            <input type="text" id="hkAudio" value="F8" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">强制停止录制并保存</label>
+            <input type="text" id="hkStop" value="Ctrl+Shift+X" />
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">桌面悬浮控制条与交互设置</div>
+          <div class="form-group">
+            <label class="form-label">录制时常驻展示桌面悬浮控制条</label>
+            <select id="floatingBarToggle">
+              <option value="true" selected>启用 (展示开始/暂停/停止与计时)</option>
+              <option value="false">禁用 (仅托盘运行)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">默认媒体保存目录</label>
+            <input type="text" id="settingOutputDir" />
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="./src/scripts/main.ts"></script>
+</body>
+</html>

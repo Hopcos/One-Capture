@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OneCapture Pin</title>
+  <link rel="stylesheet" href="./src/styles/pin.css" />
+</head>
+<body>
+  <div class="pin-container" id="pinContainer" data-tauri-drag-region>
+    <img id="pinImage" class="pin-image" src="" alt="Pinned Screenshot" />
+
+    <!-- Overlay Actions -->
+    <div class="pin-actions">
+      <button class="pin-btn" id="btnClosePin" title="取消贴图 (Esc / 双击)">✕</button>
+      <button class="pin-btn" id="btnCopyPin" title="复制图片到剪贴板">📋</button>
+    </div>
+
+    <!-- Scale Indicator Badge -->
+    <div class="pin-scale-badge" id="scaleBadge">100%</div>
+  </div>
+
+  <script type="module" src="./src/scripts/pin.ts"></script>
+</body>
+</html>

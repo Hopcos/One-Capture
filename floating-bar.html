@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OneCapture Floating Bar</title>
+  <link rel="stylesheet" href="./src/styles/floating.css" />
+</head>
+<body>
+  <div class="floating-pill" id="dragContainer" data-tauri-drag-region>
+    <!-- Recording pulsing dot -->
+    <div class="rec-indicator" id="recDot"></div>
+
+    <!-- Active Timer -->
+    <div class="timer-text" id="floatingTimer">00:00</div>
+
+    <!-- Live Audio VU meter visualizer -->
+    <div class="vu-container" title="声源音频输入功率">
+      <div class="vu-bar" id="vuBar1"></div>
+      <div class="vu-bar" id="vuBar2"></div>
+      <div class="vu-bar" id="vuBar3"></div>
+      <div class="vu-bar" id="vuBar4"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="action-btns">
+      <button class="pill-btn" id="btnPauseResume" title="暂停/恢复录制">
+        <svg id="iconPause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        <svg id="iconResume" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </button>
+
+      <button class="pill-btn stop" id="btnStop" title="停止录制并保存">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+      </button>
+
+      <button class="pill-btn" id="btnSnapshot" title="录屏过程中抓拍截图">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/scripts/floating.ts"></script>
+</body>
+</html>

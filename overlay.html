@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OneCapture Overlay</title>
+  <link rel="stylesheet" href="./src/styles/overlay.css" />
+</head>
+<body>
+  <canvas id="overlayCanvas"></canvas>
+
+  <!-- Always-Visible Fixed Top Bar (Cannot get trapped in fullscreen!) -->
+  <div class="fixed-top-bar" id="fixedTopBar">
+    <div class="hint-pill">
+      <span class="mode-tag" id="overlayModeTag">截图圈选模式</span>
+      <span id="overlayHintText">按住鼠标左键拖拽框选 | 右键单击或按 ESC 即可立即退出</span>
+    </div>
+    <button id="btnExitOverlay" class="btn-exit-overlay" title="立即退出全屏 (Esc / 右键)">
+      ✕ 退出全屏 (ESC)
+    </button>
+  </div>
+
+  <!-- Magnifier Loupe -->
+  <div id="magnifier" class="magnifier">
+    <canvas id="magnifierCanvas" class="magnifier-canvas"></canvas>
+    <div class="magnifier-info">
+      <div class="color-preview">
+        <div id="colorDot" class="color-dot"></div>
+        <span id="colorHexText">#FFFFFF</span>
+      </div>
+      <span id="coordText">0, 0</span>
+    </div>
+  </div>
+
+  <!-- Floating Annotation Toolbar (For Screenshot Mode) -->
+  <div id="annotationToolbar" class="toolbar">
+    <!-- Annotation Tools -->
+    <button class="tool-btn active" id="toolBrush" title="画笔 (B)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 2 4 4-14 14H4v-4L18 2z"/><path d="m14 6 4 4"/></svg>
+    </button>
+    <button class="tool-btn" id="toolEraser" title="橡皮擦 (E)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+    </button>
+    <button class="tool-btn" id="toolArrow" title="箭头标注 (A)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="9 5 19 5 19 15"/></svg>
+    </button>
+    <button class="tool-btn" id="toolRect" title="矩形方框 (R)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+    </button>
+    <button class="tool-btn" id="toolText" title="文字标注 (T)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+    </button>
+    <button class="tool-btn" id="btnUndo" title="撤销 (Ctrl+Z)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+    </button>
+
+    <div class="tool-divider"></div>
+
+    <!-- Color Palette -->
+    <div class="palette">
+      <div class="palette-color selected" data-color="#f43f5e" style="background: #f43f5e;"></div>
+      <div class="palette-color" data-color="#38bdf8" style="background: #38bdf8;"></div>
+      <div class="palette-color" data-color="#10b981" style="background: #10b981;"></div>
+      <div class="palette-color" data-color="#eab308" style="background: #eab308;"></div>
+      <div class="palette-color" data-color="#a855f7" style="background: #a855f7;"></div>
+      <div class="palette-color" data-color="#ffffff" style="background: #ffffff;"></div>
+    </div>
+
+    <div class="tool-divider"></div>
+
+    <!-- Action Buttons -->
+    <button class="tool-btn" id="btnPin" title="悬浮贴图至桌面 (F2)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+    </button>
+    <button class="tool-btn" id="btnSave" title="保存图片至文件 (Ctrl+S)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    </button>
+    <button class="tool-btn" id="btnCancel" title="取消退出 (Esc)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <button class="btn-confirm" id="btnCopyConfirm" title="复制并完成 (Enter)">
+      <span>复制完成</span>
+    </button>
+  </div>
+
+  <!-- Floating Toolbar For Video Region Selection Mode -->
+  <div id="regionSelectToolbar" class="toolbar" style="display: none;">
+    <div style="font-size: 13px; font-weight: 600; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+      <span>已圈定录屏区域: <span id="recordRegionDim">0 × 0</span></span>
+    </div>
+    <div class="tool-divider"></div>
+    <button class="btn-confirm" id="btnConfirmRecordRegion" style="background: linear-gradient(135deg, #06b6d4, #6366f1); padding: 8px 16px;">
+      <span>✓ 选定此区域录制 (Enter)</span>
+    </button>
+    <button class="tool-btn" id="btnCancelRecordRegion" title="取消退出">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+
+  <script type="module" src="./src/scripts/overlay.ts"></script>
+</body>
+</html>
