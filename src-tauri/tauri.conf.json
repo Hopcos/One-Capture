@@ -27,6 +27,7 @@
       {
         "label": "overlay",
         "title": "OneCapture Snipping Overlay",
+        "url": "overlay.html",
         "fullscreen": true,
         "transparent": true,
         "decorations": false,
@@ -37,6 +38,7 @@
       {
         "label": "floating",
         "title": "OneCapture Floating Toolbar",
+        "url": "floating-bar.html",
         "width": 380,
         "height": 64,
         "transparent": true,

@@ -2,7 +2,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use base64::prelude::*;
 use crate::capture::{capture_virtual_screen, crop_rgba, encode_to_png, detect_window_under_cursor, ScreenRect};
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone)]
 pub struct CaptureResult {
     pub width: u32,
     pub height: u32,
@@ -16,17 +16,20 @@ pub async fn capture_full_screen(app: AppHandle) -> Result<CaptureResult, String
     let base64_str = BASE64_STANDARD.encode(&png_bytes);
     let data_url = format!("data:image/png;base64,{}", base64_str);
 
-    // Show overlay window if present
-    if let Some(overlay) = app.get_webview_window("overlay") {
-        let _ = overlay.show();
-        let _ = overlay.set_focus();
-    }
-
-    Ok(CaptureResult {
+    let res = CaptureResult {
         width: info.width,
         height: info.height,
         image_data_url: data_url,
-    })
+    };
+
+    // Show overlay window and send image data directly
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let _ = overlay.show();
+        let _ = overlay.set_focus();
+        let _ = overlay.emit("overlay-data", res.clone());
+    }
+
+    Ok(res)
 }
 
 #[tauri::command]
@@ -68,7 +71,7 @@ pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
     if let Some(overlay) = app.get_webview_window("overlay") {
         let _ = overlay.hide();
     }
-    // Restore and focus main window
+    // Restore and focus main window so user never feels trapped
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.show();
         let _ = main.set_focus();

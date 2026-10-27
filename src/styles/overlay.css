@@ -21,52 +21,53 @@ body, html {
   height: 100%;
 }
 
-/* Always-Visible Fixed Top Bar */
+/* Always-Visible Fixed Top Bar (High z-index to guarantee visibility and clickability) */
 .fixed-top-bar {
   position: fixed;
-  top: 16px;
-  right: 20px;
+  top: 20px;
+  right: 24px;
   display: flex;
   align-items: center;
   gap: 12px;
-  z-index: 999999;
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
 }
 
 .hint-pill {
-  background: rgba(15, 23, 42, 0.88);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 20px;
-  padding: 6px 14px;
-  color: #cbd5e1;
-  font-size: 12px;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 30px;
+  padding: 8px 16px;
+  color: #f8fafc;
+  font-size: 13px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  gap: 10px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
 }
 
 .mode-tag {
   background: linear-gradient(135deg, #06b6d4, #6366f1);
   color: #ffffff;
   font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  letter-spacing: 0.5px;
 }
 
 .btn-exit-overlay {
-  background: rgba(244, 63, 94, 0.9);
-  backdrop-filter: blur(12px);
+  background: linear-gradient(135deg, #f43f5e, #e11d48);
   color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  padding: 8px 18px;
   font-size: 13px;
   font-weight: 700;
-  border-radius: 20px;
+  border-radius: 30px;
   cursor: pointer;
-  box-shadow: 0 4px 15px rgba(244, 63, 94, 0.4);
-  transition: all 0.15s ease;
+  box-shadow: 0 4px 15px rgba(244, 63, 94, 0.5);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -74,8 +75,12 @@ body, html {
 
 .btn-exit-overlay:hover {
   background: #f43f5e;
-  transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(244, 63, 94, 0.6);
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 8px 25px rgba(244, 63, 94, 0.7);
+}
+
+.btn-exit-overlay:active {
+  transform: translateY(0) scale(1);
 }
 
 /* Floating Magnifier Loupe */
@@ -131,12 +136,12 @@ body, html {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(15, 23, 42, 0.94);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 10px;
-  padding: 6px 10px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 8px 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
   z-index: 2000;
   display: none;
 }
@@ -201,14 +206,16 @@ body, html {
 .btn-confirm {
   background: #10b981;
   color: #ffffff;
-  padding: 6px 12px;
+  padding: 6px 14px;
   font-size: 12px;
   font-weight: 600;
   border-radius: 6px;
   border: none;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .btn-confirm:hover {
   background: #059669;
+  transform: scale(1.02);
 }

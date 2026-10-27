@@ -61,7 +61,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   setupToolbarEvents();
   setupCanvasEvents();
   setupKeyboardEvents();
-  setupModeListener();
+  setupEventListeners();
   await loadFullScreenCapture();
 });
 
@@ -76,26 +76,38 @@ function resizeCanvas() {
 async function loadFullScreenCapture() {
   try {
     const res = await invoke<{ width: number; height: number; image_data_url: string }>("capture_full_screen");
-    const img = new Image();
-    img.onload = () => {
-      bgImage = img;
-      render();
-    };
-    img.src = res.image_data_url;
+    applyCapturedImage(res.image_data_url);
   } catch (err) {
     console.error("Failed to load screen capture:", err);
   }
 }
 
-function setupModeListener() {
+function applyCapturedImage(dataUrl: string) {
+  const img = new Image();
+  img.onload = () => {
+    bgImage = img;
+    render();
+  };
+  img.src = dataUrl;
+}
+
+function setupEventListeners() {
+  // Listen for captured image data emitted directly from Rust
+  listen<{ width: number; height: number; image_data_url: string }>("overlay-data", (event) => {
+    if (event.payload?.image_data_url) {
+      applyCapturedImage(event.payload.image_data_url);
+    }
+  });
+
+  // Listen for mode changes
   listen<{ mode: "screenshot" | "record_region" }>("set-overlay-mode", (event) => {
     currentMode = event.payload.mode;
     if (currentMode === "record_region") {
-      overlayModeTag.textContent = "录屏选区模式";
-      overlayHintText.textContent = "拖拽框选要录制的屏幕区域 | 按 Enter 确认 | 右键或按 ESC 退出";
+      overlayModeTag.textContent = "🎥 录屏选区模式";
+      overlayHintText.textContent = "拖拽框选要录制的屏幕区域 | 按 Enter 或双击确认 | 点击右上角或按 ESC 退出";
     } else {
-      overlayModeTag.textContent = "截图圈选模式";
-      overlayHintText.textContent = "按住鼠标左键拖拽选区 | 右键或按 ESC 退出";
+      overlayModeTag.textContent = "📸 截图圈选模式";
+      overlayHintText.textContent = "按住鼠标左键拖拽选区 | 标注后点击复制或贴图 | 点击右上角或按 ESC 退出";
     }
     cropRect = null;
     annotations = [];
@@ -115,6 +127,16 @@ function setupExitHandlers() {
   window.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     cancelSnipping();
+  });
+
+  // Double click outside selection box exits immediately
+  canvas.addEventListener("dblclick", (e) => {
+    if (!cropRect) {
+      cancelSnipping();
+    } else if (currentMode === "record_region") {
+      // In record region mode, double click confirms the selection!
+      confirmRecordingRegion();
+    }
   });
 }
 
@@ -143,13 +165,13 @@ function render() {
     ctx.setLineDash([]);
 
     // Dimension label
-    ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
-    ctx.fillRect(cropRect.x, Math.max(0, cropRect.y - 26), 110, 22);
+    ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+    ctx.fillRect(cropRect.x, Math.max(0, cropRect.y - 28), 120, 24);
     ctx.fillStyle = currentMode === "record_region" ? "#06b6d4" : "#38bdf8";
     ctx.font = "bold 12px monospace";
-    ctx.fillText(`${cropRect.width} × ${cropRect.height}`, cropRect.x + 8, Math.max(16, cropRect.y - 10));
+    ctx.fillText(`${cropRect.width} × ${cropRect.height}`, cropRect.x + 8, Math.max(16, cropRect.y - 12));
 
-    // Handles
+    // Handles (8 corners and midpoints)
     const handles = [
       { x: cropRect.x, y: cropRect.y },
       { x: cropRect.x + cropRect.width / 2, y: cropRect.y },
@@ -178,7 +200,7 @@ function render() {
       }
     }
   } else {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 }
@@ -389,14 +411,14 @@ function positionToolbar() {
     regionToolbar.style.display = "flex";
     recordRegionDim.textContent = `${cropRect.width} × ${cropRect.height}`;
 
-    const tbWidth = 340;
+    const tbWidth = 360;
     let tx = cropRect.x + cropRect.width - tbWidth;
     if (tx < 10) tx = 10;
     if (tx + tbWidth > window.innerWidth) tx = window.innerWidth - tbWidth - 10;
 
-    let ty = cropRect.y + cropRect.height + 10;
-    if (ty + 50 > window.innerHeight) {
-      ty = Math.max(10, cropRect.y - 50);
+    let ty = cropRect.y + cropRect.height + 12;
+    if (ty + 60 > window.innerHeight) {
+      ty = Math.max(10, cropRect.y - 60);
     }
 
     regionToolbar.style.left = `${tx}px`;
@@ -410,9 +432,9 @@ function positionToolbar() {
     if (tx < 10) tx = 10;
     if (tx + tbWidth > window.innerWidth) tx = window.innerWidth - tbWidth - 10;
 
-    let ty = cropRect.y + cropRect.height + 10;
-    if (ty + 50 > window.innerHeight) {
-      ty = Math.max(10, cropRect.y - 50);
+    let ty = cropRect.y + cropRect.height + 12;
+    if (ty + 60 > window.innerHeight) {
+      ty = Math.max(10, cropRect.y - 60);
     }
 
     annotToolbar.style.left = `${tx}px`;
@@ -510,19 +532,23 @@ function setupToolbarEvents() {
   document.getElementById("btnCancel")?.addEventListener("click", cancelSnipping);
 
   // Video Region Selection Mode events
-  document.getElementById("btnConfirmRecordRegion")?.addEventListener("click", async () => {
-    if (!cropRect) return;
-    await invoke("set_recording_region", {
-      rect: {
-        x: Math.round(cropRect.x),
-        y: Math.round(cropRect.y),
-        width: Math.round(cropRect.width),
-        height: Math.round(cropRect.height),
-      },
-    });
+  document.getElementById("btnConfirmRecordRegion")?.addEventListener("click", () => {
+    confirmRecordingRegion();
   });
 
   document.getElementById("btnCancelRecordRegion")?.addEventListener("click", cancelSnipping);
+}
+
+async function confirmRecordingRegion() {
+  if (!cropRect) return;
+  await invoke("set_recording_region", {
+    rect: {
+      x: Math.round(cropRect.x),
+      y: Math.round(cropRect.y),
+      width: Math.round(cropRect.width),
+      height: Math.round(cropRect.height),
+    },
+  });
 }
 
 function getCroppedCanvasDataUrl(): string {
@@ -562,7 +588,7 @@ function setupKeyboardEvents() {
       cancelSnipping();
     } else if (e.key === "Enter") {
       if (currentMode === "record_region") {
-        document.getElementById("btnConfirmRecordRegion")?.click();
+        confirmRecordingRegion();
       } else {
         document.getElementById("btnCopyConfirm")?.click();
       }

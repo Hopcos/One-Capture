@@ -61,8 +61,20 @@ window.addEventListener("DOMContentLoaded", async () => {
   setupGalleryHandlers();
   setupAudioLevelSimulation();
   setupGlobalHotkeyListeners();
+  setupEscapeKeyHandler();
   refreshPinsList();
 });
+
+function setupEscapeKeyHandler() {
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      // If fullscreen or if anything open, handle escape
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      }
+    }
+  });
+}
 
 async function setupGlobalHotkeyListeners() {
   await listen("global-hotkey-snip", async () => {
@@ -149,15 +161,73 @@ function setupPills() {
 }
 
 // Interactive Region and Window Selector for Video Recording
+let isWindowSelected = false;
+
 function setupInteractiveRegionSelector() {
-  const btnSelectRegion = document.getElementById("btnTriggerSelectRegion");
-  const btnSelectWindow = document.getElementById("btnTriggerSelectWindow");
+  const btnSelectRegion = document.getElementById("btnTriggerSelectRegion") as HTMLButtonElement;
+  const btnSelectWindow = document.getElementById("btnTriggerSelectWindow") as HTMLButtonElement;
+  const btnCancelRegion = document.getElementById("btnCancelSelectedRegion") as HTMLButtonElement;
   const badge = document.getElementById("selectedRegionBadge");
   const badgeText = document.getElementById("badgeDimText");
   const regionX = document.getElementById("regionX") as HTMLInputElement;
   const regionY = document.getElementById("regionY") as HTMLInputElement;
   const regionW = document.getElementById("regionW") as HTMLInputElement;
   const regionH = document.getElementById("regionH") as HTMLInputElement;
+
+  function resetSelection() {
+    isWindowSelected = false;
+    regionX.value = "0";
+    regionY.value = "0";
+    regionW.value = "1920";
+    regionH.value = "1080";
+    if (badge) badge.style.display = "none";
+    if (btnSelectWindow) {
+      btnSelectWindow.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        <span>🪟 智能选定目标窗口</span>
+      `;
+      btnSelectWindow.style.borderColor = "var(--border-color)";
+      btnSelectWindow.style.color = "var(--text-primary)";
+    }
+  }
+
+  btnCancelRegion?.addEventListener("click", () => {
+    resetSelection();
+  });
+
+  btnSelectWindow?.addEventListener("click", async () => {
+    // If already selected, clicking it again CANCELS smart selection!
+    if (isWindowSelected) {
+      resetSelection();
+      return;
+    }
+
+    try {
+      const rect = await invoke<ScreenRect | null>("detect_window");
+      if (rect) {
+        isWindowSelected = true;
+        regionX.value = rect.x.toString();
+        regionY.value = rect.y.toString();
+        regionW.value = rect.width.toString();
+        regionH.value = rect.height.toString();
+
+        if (badge && badgeText) {
+          badge.style.display = "flex";
+          badgeText.textContent = `${rect.width} × ${rect.height} (窗口定位 X: ${rect.x}, Y: ${rect.y})`;
+        }
+
+        btnSelectWindow.innerHTML = `
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <span style="color: #f43f5e;">✕ 取消智能选定</span>
+        `;
+        btnSelectWindow.style.borderColor = "rgba(244, 63, 94, 0.5)";
+      } else {
+        alert("未能检测到当前光标下的窗口，请重试！");
+      }
+    } catch (e) {
+      alert("检测窗口失败: " + e);
+    }
+  });
 
   btnSelectRegion?.addEventListener("click", async () => {
     try {
@@ -168,40 +238,27 @@ function setupInteractiveRegionSelector() {
     }
   });
 
-  btnSelectWindow?.addEventListener("click", async () => {
-    try {
-      const rect = await invoke<ScreenRect | null>("detect_window");
-      if (rect) {
-        regionX.value = rect.x.toString();
-        regionY.value = rect.y.toString();
-        regionW.value = rect.width.toString();
-        regionH.value = rect.height.toString();
-
-        if (badge && badgeText) {
-          badge.style.display = "block";
-          badgeText.textContent = `${rect.width} × ${rect.height} (窗口定位 X: ${rect.x}, Y: ${rect.y})`;
-        }
-        alert(`已成功识别并选定目标窗口！\n尺寸: ${rect.width} × ${rect.height} (X: ${rect.x}, Y: ${rect.y})`);
-      } else {
-        alert("未能检测到当前光标下的窗口，请重试！");
-      }
-    } catch (e) {
-      alert("检测窗口失败: " + e);
-    }
-  });
-
   // Listen for region confirmation from overlay
   listen<ScreenRect>("record-region-selected", (event) => {
     const rect = event.payload;
     if (rect) {
+      isWindowSelected = false;
       regionX.value = rect.x.toString();
       regionY.value = rect.y.toString();
       regionW.value = rect.width.toString();
       regionH.value = rect.height.toString();
 
       if (badge && badgeText) {
-        badge.style.display = "block";
+        badge.style.display = "flex";
         badgeText.textContent = `${rect.width} × ${rect.height} (选区坐标 X: ${rect.x}, Y: ${rect.y})`;
+      }
+
+      if (btnSelectWindow) {
+        btnSelectWindow.innerHTML = `
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+          <span>🪟 智能选定目标窗口</span>
+        `;
+        btnSelectWindow.style.borderColor = "var(--border-color)";
       }
     }
   });
