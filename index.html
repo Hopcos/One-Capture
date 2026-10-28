@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="cyberpunk">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -48,8 +48,26 @@
       </div>
     </nav>
 
+    <!-- Theme Switcher in Sidebar -->
+    <div class="sidebar-theme-card">
+      <div class="theme-card-header">
+        <span class="theme-card-title">视觉主题风格</span>
+        <span class="theme-card-badge" id="badgeThemeName">CYBERPUNK</span>
+      </div>
+      <div class="theme-switch-group" id="sidebarThemePills">
+        <button type="button" class="theme-pill-btn active" data-theme-val="cyberpunk">
+          <span class="theme-icon">⚡</span>
+          <span>赛博朋克</span>
+        </button>
+        <button type="button" class="theme-pill-btn" data-theme-val="acrylic">
+          <span class="theme-icon">🔮</span>
+          <span>极光暗黑</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Storage Info Footer -->
-    <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+    <div class="sidebar-storage-card">
       <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">输出存储目录</div>
       <div id="sidebarOutputPath" style="font-size: 11px; color: var(--text-secondary); word-break: break-all; cursor: pointer;">正在读取...</div>
     </div>
@@ -376,14 +394,17 @@
             <label class="form-label">开始/暂停声音录制</label>
             <input type="text" id="hkAudio" value="F8" />
           </div>
-          <div class="form-group">
-            <label class="form-label">强制停止录制并保存</label>
-            <input type="text" id="hkStop" value="Ctrl+Shift+X" />
-          </div>
         </div>
 
         <div class="card">
-          <div class="card-title">桌面悬浮控制条与交互设置</div>
+          <div class="card-title">桌面交互与视觉主题配置</div>
+          <div class="form-group">
+            <label class="form-label">界面视觉主题风格 (Theme)</label>
+            <div class="pill-group" id="themePills">
+              <div class="pill-option active" data-value="cyberpunk">⚡ 赛博朋克 (Cyberpunk)</div>
+              <div class="pill-option" data-value="acrylic">🔮 极光暗黑 (Acrylic)</div>
+            </div>
+          </div>
           <div class="form-group">
             <label class="form-label">录制时常驻展示桌面悬浮控制条</label>
             <select id="floatingBarToggle">

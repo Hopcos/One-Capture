@@ -7,6 +7,7 @@ pub struct AppHotkeys {
     pub snip: String,
     pub screen_record: String,
     pub audio_record: String,
+    #[serde(default)]
     pub stop_record: String,
     pub pin_clipboard: String,
 }
@@ -56,7 +57,7 @@ impl Default for AppSettings {
             default_audio_bitrate_kbps: 192,
             default_audio_mode: "both_mixed".to_string(),
             floating_bar_enabled: true,
-            theme: "dark".to_string(),
+            theme: "cyberpunk".to_string(),
         }
     }
 }

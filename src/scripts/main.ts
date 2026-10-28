@@ -479,10 +479,65 @@ function setupHotkeyInputRecord(input: HTMLInputElement) {
   });
 }
 
+// Theme management system
+export function applyTheme(themeName: string) {
+  const normTheme = themeName === "acrylic" || themeName === "dark" ? "acrylic" : "cyberpunk";
+  document.documentElement.setAttribute("data-theme", normTheme);
+
+  // Update sidebar theme pills
+  document.querySelectorAll("#sidebarThemePills .theme-pill-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-theme-val") === normTheme);
+  });
+  const badgeTheme = document.getElementById("badgeThemeName");
+  if (badgeTheme) {
+    badgeTheme.textContent = normTheme === "cyberpunk" ? "CYBERPUNK" : "ACRYLIC";
+  }
+
+  // Update settings tab pills
+  document.querySelectorAll("#themePills .pill-option").forEach((pill) => {
+    pill.classList.toggle("active", pill.getAttribute("data-value") === normTheme);
+  });
+}
+
+export async function switchTheme(newTheme: string) {
+  applyTheme(newTheme);
+  try {
+    const current = await invoke<AppSettings>("get_settings");
+    current.theme = newTheme;
+    await invoke("save_settings", { settings: current });
+    showToast(`✓ 主题已切换为：${newTheme === "cyberpunk" ? "⚡ 赛博朋克" : "🔮 极光暗黑"}`, "info", 1800);
+  } catch (e) {
+    console.warn("Failed to persist theme setting:", e);
+  }
+}
+
+function setupThemeHandlers() {
+  // Sidebar theme pills
+  document.querySelectorAll("#sidebarThemePills .theme-pill-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const themeVal = btn.getAttribute("data-theme-val") || "cyberpunk";
+      switchTheme(themeVal);
+    });
+  });
+
+  // Settings tab theme pills
+  document.querySelectorAll("#themePills .pill-option").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      document.querySelectorAll("#themePills .pill-option").forEach((p) => p.classList.remove("active"));
+      pill.classList.add("active");
+      const themeVal = pill.getAttribute("data-value") || "cyberpunk";
+      switchTheme(themeVal);
+    });
+  });
+}
+
 // Load Application Settings
 async function loadSettings() {
   try {
     const settings = await invoke<AppSettings>("get_settings");
+    const activeTheme = settings.theme || "cyberpunk";
+    applyTheme(activeTheme);
+
     const sidebarOutput = document.getElementById("sidebarOutputPath");
     const settingOutput = document.getElementById("settingOutputDir") as HTMLInputElement;
 
@@ -493,7 +548,6 @@ async function loadSettings() {
     const hkPin = document.getElementById("hkPin") as HTMLInputElement;
     const hkScreen = document.getElementById("hkScreen") as HTMLInputElement;
     const hkAudio = document.getElementById("hkAudio") as HTMLInputElement;
-    const hkStop = document.getElementById("hkStop") as HTMLInputElement;
 
     if (hkSnip) {
       hkSnip.value = settings.hotkeys.snip;
@@ -510,10 +564,6 @@ async function loadSettings() {
     if (hkAudio) {
       hkAudio.value = settings.hotkeys.audio_record;
       setupHotkeyInputRecord(hkAudio);
-    }
-    if (hkStop) {
-      hkStop.value = settings.hotkeys.stop_record;
-      setupHotkeyInputRecord(hkStop);
     }
 
     const floatingBarToggle = document.getElementById("floatingBarToggle") as HTMLSelectElement;
@@ -535,6 +585,8 @@ async function loadSettings() {
 
 // Screen & Audio Recording Controls
 function setupRecordingHandlers() {
+  setupThemeHandlers();
+
   const btnScreen = document.getElementById("btnStartScreenRecord") as HTMLButtonElement;
   const btnAudio = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
 
@@ -561,23 +613,24 @@ function setupRecordingHandlers() {
     const hkPin = document.getElementById("hkPin") as HTMLInputElement;
     const hkScreen = document.getElementById("hkScreen") as HTMLInputElement;
     const hkAudio = document.getElementById("hkAudio") as HTMLInputElement;
-    const hkStop = document.getElementById("hkStop") as HTMLInputElement;
     const floatingBarToggle = document.getElementById("floatingBarToggle") as HTMLSelectElement;
 
     try {
       const current = await invoke<AppSettings>("get_settings");
+      const themeActive = document.querySelector("#themePills .pill-option.active")?.getAttribute("data-value") || "cyberpunk";
+      current.theme = themeActive;
+
       if (settingOutput?.value) current.output_dir = settingOutput.value;
       if (hkSnip?.value) current.hotkeys.snip = hkSnip.value.trim();
       if (hkPin?.value) current.hotkeys.pin_clipboard = hkPin.value.trim();
       if (hkScreen?.value) current.hotkeys.screen_record = hkScreen.value.trim();
       if (hkAudio?.value) current.hotkeys.audio_record = hkAudio.value.trim();
-      if (hkStop?.value) current.hotkeys.stop_record = hkStop.value.trim();
       if (floatingBarToggle) {
         current.floating_bar_enabled = floatingBarToggle.value === "true";
       }
 
       await invoke("save_settings", { settings: current });
-      showToast("✓ 快捷键与通用设置已成功保存并立即生效！", "success");
+      showToast("✓ 快捷键与视觉主题配置已成功保存！", "success");
       await loadSettings();
     } catch (e) {
       showToast("保存设置失败：" + e, "error");
