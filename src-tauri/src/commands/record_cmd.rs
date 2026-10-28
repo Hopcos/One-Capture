@@ -27,6 +27,11 @@ pub async fn start_screen_record(
     let settings = AppSettings::load();
     let path = pipeline.start_screen_recording(options, &settings.output_dir)?;
 
+    // Automatically minimize main window so recording doesn't capture the app window
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.minimize();
+    }
+
     // Show desktop floating controller
     if settings.floating_bar_enabled {
         if let Some(float_win) = app.get_webview_window("floating") {
@@ -75,6 +80,13 @@ pub fn stop_recording(
     // Hide desktop floating bar
     if let Some(float_win) = app.get_webview_window("floating") {
         let _ = float_win.hide();
+    }
+
+    // Restore and focus main window when recording finishes
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.unminimize();
+        let _ = main_win.show();
+        let _ = main_win.set_focus();
     }
 
     let res = StopResult {

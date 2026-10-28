@@ -158,11 +158,62 @@ pub fn build_screen_recording_args(
     // Overwrite without asking
     args.push("-y".to_string());
 
-    // Performance optimizations: Real-time low latency & fast initialization
-    args.push("-thread_queue_size".to_string());
-    args.push("1024".to_string());
+    let mic_name = get_default_mic_name();
+    let speaker_name = get_default_speaker_name();
+    let mut has_audio_stream = false;
+    let video_input_idx: usize;
+
+    // DirectShow audio inputs MUST precede gdigrab desktop input so DirectShow clock
+    // acts as the real-time master clock. If gdigrab is input 0, gdigrab's Unix epoch
+    // wallclock timestamp causes FFmpeg to choke waiting for DirectShow to catch up 56 years,
+    // resulting in severe video stuttering (only 1 frame every few seconds).
+    match options.audio_mode {
+        AudioSourceMode::Mute => {
+            video_input_idx = 0;
+        }
+        AudioSourceMode::MicOnly => {
+            args.push("-thread_queue_size".to_string());
+            args.push("1024".to_string());
+            args.push("-f".to_string());
+            args.push("dshow".to_string());
+            args.push("-i".to_string());
+            args.push(format!("audio={}", mic_name));
+            video_input_idx = 1;
+            has_audio_stream = true;
+        }
+        AudioSourceMode::SpeakerOnly => {
+            args.push("-thread_queue_size".to_string());
+            args.push("1024".to_string());
+            args.push("-f".to_string());
+            args.push("dshow".to_string());
+            args.push("-i".to_string());
+            args.push(format!("audio={}", speaker_name));
+            video_input_idx = 1;
+            has_audio_stream = true;
+        }
+        AudioSourceMode::BothMixed => {
+            args.push("-thread_queue_size".to_string());
+            args.push("1024".to_string());
+            args.push("-f".to_string());
+            args.push("dshow".to_string());
+            args.push("-i".to_string());
+            args.push(format!("audio={}", speaker_name));
+
+            args.push("-thread_queue_size".to_string());
+            args.push("1024".to_string());
+            args.push("-f".to_string());
+            args.push("dshow".to_string());
+            args.push("-i".to_string());
+            args.push(format!("audio={}", mic_name));
+
+            video_input_idx = 2;
+            has_audio_stream = true;
+        }
+    }
 
     // Video capture input via Windows GDI grabber
+    args.push("-thread_queue_size".to_string());
+    args.push("1024".to_string());
     args.push("-f".to_string());
     args.push("gdigrab".to_string());
     args.push("-draw_mouse".to_string());
@@ -186,60 +237,29 @@ pub fn build_screen_recording_args(
     args.push("-i".to_string());
     args.push("desktop".to_string());
 
-    // Audio input handling
-    let mic_name = get_default_mic_name();
-    let speaker_name = get_default_speaker_name();
-    let mut has_audio_stream = false;
-
+    // Audio stream mapping & filters
     match options.audio_mode {
         AudioSourceMode::Mute => {
             args.push("-an".to_string());
+            args.push("-map".to_string());
+            args.push(format!("{}:v", video_input_idx));
         }
-        AudioSourceMode::MicOnly => {
-            args.push("-thread_queue_size".to_string());
-            args.push("1024".to_string());
-            args.push("-f".to_string());
-            args.push("dshow".to_string());
-            args.push("-i".to_string());
-            args.push(format!("audio={}", mic_name));
+        AudioSourceMode::MicOnly | AudioSourceMode::SpeakerOnly => {
             args.push("-af".to_string());
             args.push("aresample=async=1000:first_pts=0".to_string());
-            has_audio_stream = true;
-        }
-        AudioSourceMode::SpeakerOnly => {
-            args.push("-thread_queue_size".to_string());
-            args.push("1024".to_string());
-            args.push("-f".to_string());
-            args.push("dshow".to_string());
-            args.push("-i".to_string());
-            args.push(format!("audio={}", speaker_name));
-            args.push("-af".to_string());
-            args.push("aresample=async=1000:first_pts=0".to_string());
-            has_audio_stream = true;
+            args.push("-map".to_string());
+            args.push(format!("{}:v", video_input_idx));
+            args.push("-map".to_string());
+            args.push("0:a".to_string());
         }
         AudioSourceMode::BothMixed => {
-            args.push("-thread_queue_size".to_string());
-            args.push("1024".to_string());
-            args.push("-f".to_string());
-            args.push("dshow".to_string());
-            args.push("-i".to_string());
-            args.push(format!("audio={}", speaker_name));
-
-            args.push("-thread_queue_size".to_string());
-            args.push("1024".to_string());
-            args.push("-f".to_string());
-            args.push("dshow".to_string());
-            args.push("-i".to_string());
-            args.push(format!("audio={}", mic_name));
-
             // Continuous silence padding on both inputs so idle loopback never freezes the video pipeline
             args.push("-filter_complex".to_string());
-            args.push("[1:a]aresample=async=1000:first_pts=0,apad[a1];[2:a]aresample=async=1000:first_pts=0,apad[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=0[aout]".to_string());
+            args.push("[0:a]aresample=async=1000:first_pts=0,apad[a1];[1:a]aresample=async=1000:first_pts=0,apad[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=0[aout]".to_string());
             args.push("-map".to_string());
-            args.push("0:v".to_string());
+            args.push(format!("{}:v", video_input_idx));
             args.push("-map".to_string());
             args.push("[aout]".to_string());
-            has_audio_stream = true;
         }
     }
 

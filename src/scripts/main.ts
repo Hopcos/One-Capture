@@ -122,13 +122,29 @@ window.addEventListener("DOMContentLoaded", async () => {
   refreshPinsList();
   await loadMediaGallery();
 
-  await listen("media-saved", () => {
+  await listen("media-saved", async () => {
     resetRecordingUI();
     loadMediaGallery();
     showToast("✓ 录制完成已保存至存储目录", "success");
+    try {
+      const appWin = getCurrentWindow();
+      await appWin.unminimize();
+      await appWin.show();
+      await appWin.setFocus();
+    } catch (e) {
+      console.warn("Failed to unminimize window on media-saved:", e);
+    }
   });
-  await listen("recording-stopped", () => {
+  await listen("recording-stopped", async () => {
     resetRecordingUI();
+    try {
+      const appWin = getCurrentWindow();
+      await appWin.unminimize();
+      await appWin.show();
+      await appWin.setFocus();
+    } catch (e) {
+      console.warn("Failed to unminimize window on recording-stopped:", e);
+    }
   });
   await listen("media-deleted", () => {
     loadMediaGallery();
@@ -520,25 +536,37 @@ async function startScreenRecording() {
       output_path: null,
     };
 
+    const appWin = getCurrentWindow();
+    // Automatically minimize main window immediately so it does not obstruct the recording area
+    try {
+      await appWin.minimize();
+      // Allow Windows DWM composition transition to settle before screen capture begins
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    } catch (e) {
+      console.warn("Failed to minimize window before record:", e);
+    }
+
     const outPath = await invoke<string>("start_screen_record", { options });
     isRecording = true;
     currentRecordingType = "screen";
 
     const btn = document.getElementById("btnStartScreenRecord") as HTMLButtonElement;
-    btn.classList.remove("btn-primary");
-    btn.classList.add("btn-danger");
-    btn.innerHTML = `<span>停止录制 (00:00)</span>`;
+    if (btn) {
+      btn.classList.remove("btn-primary");
+      btn.classList.add("btn-danger");
+      btn.innerHTML = `<span>停止录制 (00:00)</span>`;
+    }
 
     startStatusPolling();
-
-    // Automatically minimize main window so it does not obstruct the recording area
+  } catch (err) {
     try {
       const appWin = getCurrentWindow();
-      await appWin.minimize();
+      await appWin.unminimize();
+      await appWin.show();
+      await appWin.setFocus();
     } catch (e) {
-      console.warn("Failed to minimize window:", e);
+      console.warn("Failed to restore window on error:", e);
     }
-  } catch (err) {
     showToast("启动屏幕录制失败: " + err, "error");
   }
 }

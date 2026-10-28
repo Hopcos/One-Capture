@@ -89,3 +89,37 @@ fn test_audio_recording_args_formats() {
         assert!(args.contains(&"dshow".to_string()));
     }
 }
+
+#[test]
+fn test_screen_recording_args_audio_modes() {
+    let base_options = VideoRecordOptions {
+        format: VideoFormat::Mp4,
+        codec: VideoCodec::Libx264,
+        fps: 30,
+        bitrate_kbps: 4000,
+        region: None,
+        audio_mode: AudioSourceMode::BothMixed,
+        time_limit_seconds: None,
+        output_path: None,
+    };
+
+    // Both mixed mode: video should map from index 2 and aout from filter_complex
+    let args_both = build_screen_recording_args(&base_options, "both.mp4");
+    assert!(args_both.contains(&"-map".to_string()));
+    assert!(args_both.contains(&"2:v".to_string()));
+    assert!(args_both.contains(&"[aout]".to_string()));
+
+    // Mic only: video should map from index 1 and audio from 0:a
+    let mut mic_options = base_options.clone();
+    mic_options.audio_mode = AudioSourceMode::MicOnly;
+    let args_mic = build_screen_recording_args(&mic_options, "mic.mp4");
+    assert!(args_mic.contains(&"1:v".to_string()));
+    assert!(args_mic.contains(&"0:a".to_string()));
+
+    // Speaker only: video should map from index 1 and audio from 0:a
+    let mut speaker_options = base_options.clone();
+    speaker_options.audio_mode = AudioSourceMode::SpeakerOnly;
+    let args_spk = build_screen_recording_args(&speaker_options, "spk.mp4");
+    assert!(args_spk.contains(&"1:v".to_string()));
+    assert!(args_spk.contains(&"0:a".to_string()));
+}
