@@ -1,4 +1,5 @@
 use std::process::Command;
+use tauri::{AppHandle, Emitter};
 use crate::audio::{list_audio_devices, AudioDevice};
 use crate::config::AppSettings;
 
@@ -14,8 +15,11 @@ pub fn get_settings() -> AppSettings {
 }
 
 #[tauri::command]
-pub fn save_settings(settings: AppSettings) -> Result<(), String> {
-    settings.save()
+pub fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
+    settings.save()?;
+    crate::hotkey::reload_global_hotkeys();
+    let _ = app.emit("settings-updated", &settings);
+    Ok(())
 }
 
 #[tauri::command]

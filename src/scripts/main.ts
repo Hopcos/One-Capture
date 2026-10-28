@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 interface AppSettings {
   output_dir: string;
@@ -163,19 +164,20 @@ function setupEscapeKeyHandler() {
   });
 }
 
-// Screen capture workflow that safely hides the main window first
+// Screen capture workflow that safely minimizes the main window first
 async function startCaptureWorkflow(mode: "screenshot" | "record_region") {
   const appWin = getCurrentWindow();
   try {
-    // 1. Temporarily hide main window so user's screen capture is completely unobscured
-    await appWin.hide();
+    // 1. Minimize main window to taskbar so user's screen capture is unobscured while keeping taskbar/tray access
+    await appWin.minimize();
     // 2. Allow Windows DWM composition transition to settle
-    await new Promise((resolve) => setTimeout(resolve, 160));
+    await new Promise((resolve) => setTimeout(resolve, 180));
     // 3. Emit overlay mode & trigger capture
     await emit("set-overlay-mode", { mode });
     await invoke("capture_full_screen");
   } catch (err) {
     console.error("Failed to start capture workflow:", err);
+    await appWin.unminimize();
     await appWin.show();
     await appWin.setFocus();
   }
@@ -231,10 +233,25 @@ async function handleGlobalPinShortcut() {
 
 async function setupGlobalHotkeyListeners() {
   await listen("global-hotkey-snip", async () => {
+    try {
+      const overlayWin = await WebviewWindow.getByLabel("overlay");
+      const isOverlayVisible = await overlayWin?.isVisible();
+      if (isOverlayVisible) {
+        await invoke("hide_overlay", { restoreMain: false });
+        return;
+      }
+    } catch (_) {}
     await startCaptureWorkflow("screenshot");
   });
 
   await listen("global-hotkey-pin-clipboard", async () => {
+    try {
+      const overlayWin = await WebviewWindow.getByLabel("overlay");
+      const isOverlayVisible = await overlayWin?.isVisible();
+      if (isOverlayVisible) {
+        return;
+      }
+    } catch (_) {}
     await handleGlobalPinShortcut();
   });
 
@@ -413,6 +430,55 @@ function setupInteractiveRegionSelector() {
   });
 }
 
+function setupHotkeyInputRecord(input: HTMLInputElement) {
+  if (!input || input.dataset.bound === "true") return;
+  input.dataset.bound = "true";
+  input.setAttribute("readonly", "true");
+  input.setAttribute("placeholder", "点击并按下快捷键...");
+  input.style.cursor = "pointer";
+
+  input.addEventListener("focus", () => {
+    input.select();
+  });
+
+  input.addEventListener("keydown", (e: KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Ignore standalone modifier presses
+    if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
+      return;
+    }
+
+    // Clear on Backspace or Delete
+    if (e.key === "Backspace" || e.key === "Delete") {
+      input.value = "";
+      return;
+    }
+
+    const modifiers: string[] = [];
+    if (e.ctrlKey) modifiers.push("Ctrl");
+    if (e.shiftKey) modifiers.push("Shift");
+    if (e.altKey) modifiers.push("Alt");
+    if (e.metaKey) modifiers.push("Win");
+
+    let keyName = e.key;
+    if (keyName.length === 1) {
+      keyName = keyName.toUpperCase();
+    } else if (keyName.toLowerCase().startsWith("f") && keyName.length <= 3) {
+      keyName = keyName.toUpperCase();
+    } else if (keyName === "PrintScreen") {
+      keyName = "PrintScreen";
+    }
+
+    if (modifiers.length > 0) {
+      input.value = `${modifiers.join("+")}+${keyName}`;
+    } else {
+      input.value = keyName;
+    }
+  });
+}
+
 // Load Application Settings
 async function loadSettings() {
   try {
@@ -429,11 +495,31 @@ async function loadSettings() {
     const hkAudio = document.getElementById("hkAudio") as HTMLInputElement;
     const hkStop = document.getElementById("hkStop") as HTMLInputElement;
 
-    if (hkSnip) hkSnip.value = settings.hotkeys.snip;
-    if (hkPin) hkPin.value = settings.hotkeys.pin_clipboard || "F3";
-    if (hkScreen) hkScreen.value = settings.hotkeys.screen_record;
-    if (hkAudio) hkAudio.value = settings.hotkeys.audio_record;
-    if (hkStop) hkStop.value = settings.hotkeys.stop_record;
+    if (hkSnip) {
+      hkSnip.value = settings.hotkeys.snip;
+      setupHotkeyInputRecord(hkSnip);
+    }
+    if (hkPin) {
+      hkPin.value = settings.hotkeys.pin_clipboard || "F3";
+      setupHotkeyInputRecord(hkPin);
+    }
+    if (hkScreen) {
+      hkScreen.value = settings.hotkeys.screen_record;
+      setupHotkeyInputRecord(hkScreen);
+    }
+    if (hkAudio) {
+      hkAudio.value = settings.hotkeys.audio_record;
+      setupHotkeyInputRecord(hkAudio);
+    }
+    if (hkStop) {
+      hkStop.value = settings.hotkeys.stop_record;
+      setupHotkeyInputRecord(hkStop);
+    }
+
+    const floatingBarToggle = document.getElementById("floatingBarToggle") as HTMLSelectElement;
+    if (floatingBarToggle) {
+      floatingBarToggle.value = settings.floating_bar_enabled ? "true" : "false";
+    }
 
     const bSnip = document.getElementById("hkSnipBadge");
     const bScreen = document.getElementById("hkScreenBadge");
@@ -476,18 +562,22 @@ function setupRecordingHandlers() {
     const hkScreen = document.getElementById("hkScreen") as HTMLInputElement;
     const hkAudio = document.getElementById("hkAudio") as HTMLInputElement;
     const hkStop = document.getElementById("hkStop") as HTMLInputElement;
+    const floatingBarToggle = document.getElementById("floatingBarToggle") as HTMLSelectElement;
 
     try {
       const current = await invoke<AppSettings>("get_settings");
-      current.output_dir = settingOutput.value;
-      current.hotkeys.snip = hkSnip.value;
-      if (hkPin) current.hotkeys.pin_clipboard = hkPin.value;
-      current.hotkeys.screen_record = hkScreen.value;
-      current.hotkeys.audio_record = hkAudio.value;
-      current.hotkeys.stop_record = hkStop.value;
+      if (settingOutput?.value) current.output_dir = settingOutput.value;
+      if (hkSnip?.value) current.hotkeys.snip = hkSnip.value.trim();
+      if (hkPin?.value) current.hotkeys.pin_clipboard = hkPin.value.trim();
+      if (hkScreen?.value) current.hotkeys.screen_record = hkScreen.value.trim();
+      if (hkAudio?.value) current.hotkeys.audio_record = hkAudio.value.trim();
+      if (hkStop?.value) current.hotkeys.stop_record = hkStop.value.trim();
+      if (floatingBarToggle) {
+        current.floating_bar_enabled = floatingBarToggle.value === "true";
+      }
 
       await invoke("save_settings", { settings: current });
-      showToast("✓ 设置已成功保存！", "success");
+      showToast("✓ 快捷键与通用设置已成功保存并立即生效！", "success");
       await loadSettings();
     } catch (e) {
       showToast("保存设置失败：" + e, "error");

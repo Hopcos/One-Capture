@@ -15,6 +15,9 @@ fn test_parse_single_function_key() {
 
     let parsed_f8 = parse_hotkey_string("F8").expect("Failed to parse F8");
     assert_eq!(parsed_f8.vk_code, VK_F8 as u32);
+
+    let parsed_prtsc = parse_hotkey_string("PrintScreen").expect("Failed to parse PrintScreen");
+    assert_eq!(parsed_prtsc.modifiers, MOD_NOREPEAT);
 }
 
 #[test]

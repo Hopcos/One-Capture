@@ -67,15 +67,17 @@ pub fn save_image_file(file_path: String, data_url: String) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
+pub fn hide_overlay(app: AppHandle, restore_main: Option<bool>) -> Result<(), String> {
     if let Some(overlay) = app.get_webview_window("overlay") {
         let _ = overlay.hide();
     }
-    // Restore and focus main window so user never feels trapped
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.show();
-        let _ = main.unminimize();
-        let _ = main.set_focus();
+    // Only restore and focus main window when explicitly requested (e.g. record region selection)
+    if restore_main.unwrap_or(false) {
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.show();
+            let _ = main.unminimize();
+            let _ = main.set_focus();
+        }
     }
     Ok(())
 }
@@ -84,5 +86,5 @@ pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
 pub fn set_recording_region(app: AppHandle, rect: ScreenRect) -> Result<(), String> {
     // Notify main window of selected recording region
     let _ = app.emit("record-region-selected", rect);
-    hide_overlay(app)
+    hide_overlay(app, Some(true))
 }

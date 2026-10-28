@@ -64,6 +64,22 @@ let currentStrokeWidth = 3;
 let annotations: Annotation[] = [];
 let isDrawingAnnotation = false;
 let currentAnnotation: Annotation | null = null;
+let configuredPinKey = "F3";
+
+async function syncPinHotkey() {
+  try {
+    const settings = await invoke<any>("get_settings");
+    if (settings?.hotkeys?.pin_clipboard) {
+      configuredPinKey = settings.hotkeys.pin_clipboard.trim();
+      const btnPin = document.getElementById("btnPin");
+      if (btnPin) {
+        btnPin.title = `悬浮贴图至桌面 (${configuredPinKey})`;
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to sync pin hotkey in overlay:", e);
+  }
+}
 
 window.addEventListener("DOMContentLoaded", async () => {
   resizeCanvas();
@@ -73,6 +89,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   setupCanvasEvents();
   setupKeyboardEvents();
   setupEventListeners();
+  await syncPinHotkey();
+  await listen("settings-updated", (event: any) => {
+    if (event.payload?.hotkeys?.pin_clipboard) {
+      configuredPinKey = event.payload.hotkeys.pin_clipboard.trim();
+      const btnPin = document.getElementById("btnPin");
+      if (btnPin) {
+        btnPin.title = `悬浮贴图至桌面 (${configuredPinKey})`;
+      }
+    }
+  });
 });
 
 function resizeCanvas() {
@@ -154,6 +180,19 @@ function setupEventListeners() {
     }
   });
 
+  // Listen for pin trigger from global hotkey (F3) while overlay is open
+  listen("trigger-overlay-pin", () => {
+    executePinFromOverlay();
+  });
+  listen("global-hotkey-pin-clipboard", () => {
+    executePinFromOverlay();
+  });
+
+  // Listen for cancel trigger from pressing F1 while overlay is already open
+  listen("cancel-overlay", () => {
+    cancelSnipping();
+  });
+
   // Listen for mode changes
   listen<{ mode: "screenshot" | "record_region" }>("set-overlay-mode", (event) => {
     currentMode = event.payload.mode;
@@ -188,6 +227,8 @@ function setupExitHandlers() {
       cancelSnipping();
     } else if (currentMode === "record_region") {
       confirmRecordingRegion();
+    } else {
+      executeCopyAndFinish();
     }
   });
 }
@@ -767,35 +808,10 @@ function setupToolbarEvents() {
   });
 
   // Action: Pin
-  document.getElementById("btnPin")?.addEventListener("click", async () => {
-    if (!cropRect) return;
-    const croppedDataUrl = getCroppedCanvasDataUrl();
-
-    // Use CSS logical coordinates so the Tauri window spawns exactly where the user snipped!
-    const normX = Math.round(Math.min(cropRect.x, cropRect.x + cropRect.width));
-    const normY = Math.round(Math.min(cropRect.y, cropRect.y + cropRect.height));
-    const normW = Math.max(30, Math.round(Math.abs(cropRect.width)));
-    const normH = Math.max(30, Math.round(Math.abs(cropRect.height)));
-
-    await invoke("create_pin_window", {
-      imageDataUrl: croppedDataUrl,
-      x: normX,
-      y: normY,
-      width: normW,
-      height: normH,
-    });
-    cancelSnipping();
-  });
+  document.getElementById("btnPin")?.addEventListener("click", executePinFromOverlay);
 
   // Action: Copy to clipboard
-  document.getElementById("btnCopyConfirm")?.addEventListener("click", async () => {
-    if (!cropRect) return;
-    const croppedDataUrl = getCroppedCanvasDataUrl();
-    const res = await fetch(croppedDataUrl);
-    const blob = await res.blob();
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-    cancelSnipping();
-  });
+  document.getElementById("btnCopy")?.addEventListener("click", executeCopyAndFinish);
 
   // Action: Save to file (saved directly to output directory & synced to history)
   document.getElementById("btnSave")?.addEventListener("click", async () => {
@@ -851,6 +867,54 @@ function getCroppedCanvasDataUrl(): string {
   return tempCanvas.toDataURL("image/png");
 }
 
+async function executePinFromOverlay() {
+  if (currentMode !== "screenshot") return;
+
+  // If user hasn't drawn a selection, default to full screen snapshot so user never gets stuck!
+  if (!cropRect) {
+    cropRect = {
+      x: 0,
+      y: 0,
+      width: canvas.width,
+      height: canvas.height,
+    };
+  }
+
+  const croppedDataUrl = getCroppedCanvasDataUrl();
+  const normX = Math.round(Math.min(cropRect.x, cropRect.x + cropRect.width));
+  const normY = Math.round(Math.min(cropRect.y, cropRect.y + cropRect.height));
+  const normW = Math.max(30, Math.round(Math.abs(cropRect.width)));
+  const normH = Math.max(30, Math.round(Math.abs(cropRect.height)));
+
+  try {
+    await invoke("create_pin_window", {
+      imageDataUrl: croppedDataUrl,
+      x: normX,
+      y: normY,
+      width: normW,
+      height: normH,
+    });
+  } catch (err) {
+    console.error("Failed to create pin window from overlay:", err);
+  } finally {
+    cancelSnipping();
+  }
+}
+
+async function executeCopyAndFinish() {
+  if (!cropRect) return;
+  const croppedDataUrl = getCroppedCanvasDataUrl();
+  try {
+    const res = await fetch(croppedDataUrl);
+    const blob = await res.blob();
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+  } catch (err) {
+    console.error("Failed to copy image to clipboard:", err);
+  } finally {
+    cancelSnipping();
+  }
+}
+
 function cancelSnipping() {
   cropRect = null;
   annotations = [];
@@ -859,7 +923,24 @@ function cancelSnipping() {
   annotToolbar.style.display = "none";
   regionToolbar.style.display = "none";
   magnifier.style.display = "none";
-  invoke("hide_overlay");
+  const shouldRestore = currentMode === "record_region";
+  invoke("hide_overlay", { restoreMain: shouldRestore });
+}
+
+function matchesHotkey(e: KeyboardEvent, hotkeyStr: string): boolean {
+  if (!hotkeyStr) return false;
+  const parts = hotkeyStr.split("+").map((s) => s.trim().toUpperCase());
+  const mainKey = parts[parts.length - 1];
+  const needsCtrl = parts.includes("CTRL") || parts.includes("CONTROL");
+  const needsShift = parts.includes("SHIFT");
+  const needsAlt = parts.includes("ALT");
+
+  const ctrlPressed = e.ctrlKey || e.metaKey;
+  if (needsCtrl !== ctrlPressed) return false;
+  if (needsShift !== e.shiftKey) return false;
+  if (needsAlt !== e.altKey) return false;
+
+  return e.key.toUpperCase() === mainKey;
 }
 
 function setupKeyboardEvents() {
@@ -870,18 +951,16 @@ function setupKeyboardEvents() {
       if (currentMode === "record_region") {
         confirmRecordingRegion();
       } else {
-        document.getElementById("btnCopyConfirm")?.click();
+        executeCopyAndFinish();
       }
     } else if (e.key === "z" && (e.ctrlKey || e.metaKey)) {
       document.getElementById("btnUndo")?.click();
     } else if (e.key === "s" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       document.getElementById("btnSave")?.click();
-    } else if (e.key === "F3" || e.key === "F2" || e.key.toLowerCase() === "p" || (e.key.toLowerCase() === "t" && (e.ctrlKey || e.metaKey))) {
+    } else if (matchesHotkey(e, configuredPinKey)) {
       e.preventDefault();
-      if (cropRect) {
-        document.getElementById("btnPin")?.click();
-      }
+      executePinFromOverlay();
     } else if (cropRect && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
       // Precision 1px (or 10px with Shift) keyboard nudging
       e.preventDefault();

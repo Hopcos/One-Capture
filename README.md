@@ -15,6 +15,12 @@ OneCapture 是专为 Windows 平台打造的高性能一站式媒体捕捉与桌
   - [5. 全局快捷键与扩展配置](#5-全局快捷键与扩展配置)
 - [性能指标与底层优化](#性能指标与底层优化)
 - [技术架构与设计规范](#技术架构与设计规范)
+- [系统架构与核心技术实现详解 (Mermaid 图解)](#系统架构与核心技术实现详解-mermaid-图解)
+  - [1. 总体分层架构图](#1-总体分层架构图)
+  - [2. 硬件加速屏幕录制与时钟对齐原理](#2-硬件加速屏幕录制与时钟对齐原理)
+  - [3. Win32 全局快捷键热重载与系统托盘架构](#3-win32-全局快捷键热重载与系统托盘架构)
+  - [4. Snipaste 风格桌面多张贴图调度原理](#4-snipaste-风格桌面多张贴图调度原理)
+  - [5. 零拷贝屏幕抓取与遮罩标注管线](#5-零拷贝屏幕抓取与遮罩标注管线)
 - [快速开始与编译构建](#快速开始与编译构建)
 - [单元测试与质量保障](#单元测试与质量保障)
 - [快捷键清单](#快捷键清单)
@@ -145,6 +151,227 @@ OneCapture
 
 ---
 
+## 系统架构与核心技术实现详解 (Mermaid 图解)
+
+OneCapture 采用模块化解耦分层架构，深度结合 Rust 系统级原生性能与现代 Web 前端丰富的交互表现力。以下通过 Mermaid 架构图、时序图与流程图深入拆解其核心技术实现与工作原理。
+
+### 1. 总体分层架构图
+
+```mermaid
+graph TB
+    subgraph UI["前端展现层 (TypeScript / Vite / Acrylic UI)"]
+        Dashboard["主控制台界面 (index.html)"]
+        Overlay["全屏截图标注层 (overlay.html)"]
+        FloatingBar["桌面录制胶囊 (floating-bar.html)"]
+        PinWindows["桌面独立贴图窗口 (pin.html * N)"]
+    end
+
+    subgraph IPC["跨语言通信层 (Tauri v2 IPC & Event Bus)"]
+        Commands["异步指令 (Commands / Invoke)"]
+        EventBus["双向事件总线 (Global Events / Emitter)"]
+    end
+
+    subgraph Core["Rust 核心引擎层 (Native Backend Engine)"]
+        subgraph CaptureMod["屏幕采集与探测 (Capture Engine)"]
+            GDIScreen["GDI / BitBlt 内存位图截屏"]
+            DWMDetect["DWM 窗口边缘无阴影吸附探测"]
+        end
+        
+        subgraph AudioMod["音频与混音 (Audio Engine)"]
+            DeviceDetect["DirectShow 硬件采集驱动探测"]
+            Mixer["双声源软饱和限幅器 (Tanh Limiter)"]
+            VUMeter["实时 RMS 音频功率计算"]
+        end
+
+        subgraph RecordMod["硬件加速录制管道 (Recorder Pipeline)"]
+            Encoder["多硬件编码器参数装配 (NVENC/QSV/AMF/x264)"]
+            ClockSync["DirectShow 主时钟流式交织对齐"]
+            Subprocess["FFmpeg 子进程生命周期与优雅停机"]
+        end
+
+        subgraph SystemMod["系统集成与状态管理 (System Integration)"]
+            Hotkey["Win32 原生线程消息队列全局快捷键 (热重载)"]
+            TrayIcon["Windows 状态栏常驻托盘与关闭拦截 (Tray Icon)"]
+            PinMgr["多张贴图实例生命周期调度器"]
+            Config["原子持久化配置 (settings.json)"]
+        end
+    end
+
+    Dashboard --> Commands
+    Overlay --> Commands
+    FloatingBar --> Commands
+    PinWindows --> Commands
+
+    Commands --> CaptureMod
+    Commands --> AudioMod
+    Commands --> RecordMod
+    Commands --> SystemMod
+
+    EventBus <--> Dashboard
+    EventBus <--> Overlay
+    EventBus <--> FloatingBar
+    EventBus <--> SystemMod
+```
+
+---
+
+### 2. 硬件加速屏幕录制与时钟对齐原理
+
+在 Windows 音视频同步录制中，画面极度卡顿（数秒跳动一次）的根本原因在于 **多路输入源的时间戳纪元冲突**：
+- Windows `gdigrab` 桌面图像采集器的时间戳基于 Unix Epoch 纪元时钟（约 17 亿秒）；
+- DirectShow 硬件音频（麦克风与扬声器回环）的时间戳基于开机运行时钟（Uptime，约数千秒）；
+- 若将桌面置于 Input 0，FFmpeg 交织解复用器发现音频比视频“落后 56 年”，会彻底阻塞视频抓取等待音频追赶，引发缓冲区死锁。
+
+OneCapture 采用 **DirectShow 硬件时钟前置作为主时钟 (Master Clock)** 的多流交织架构，结合异步自适应重采样与连续静音补偿，实现稳定 60 FPS 丝滑录制：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as 前端 / 快捷键触发
+    participant Cmd as Rust Commands (record_cmd)
+    participant Pipe as RecorderPipeline
+    participant FFmpeg as FFmpeg 底层转码子进程
+    participant Disk as 本地存储 (MP4 / MKV)
+
+    App->>Cmd: start_screen_record(options)
+    Cmd->>Cmd: 自动最小化主窗口 (避免录入软件自身)
+    Cmd->>Pipe: start_screen_recording(options, out_dir)
+    
+    rect rgb(240, 248, 255)
+    note over Pipe,FFmpeg: 重构输入流顺序：硬件音频前置为主时钟 (Master Clock)
+    Pipe->>FFmpeg: Input 0: DirectShow 系统扬声器 (Uptime 时钟 ~4000s)
+    Pipe->>FFmpeg: Input 1: DirectShow 麦克风阵列 (Uptime 时钟 ~4000s)
+    Pipe->>FFmpeg: Input 2: GDIgrab 桌面抓取 (-framerate 30/60)
+    Pipe->>FFmpeg: -filter_complex: aresample(async=1000:first_pts=0) + apad 补齐静音 + amix 混音
+    Pipe->>FFmpeg: -map 2:v -map [aout] (硬件加速: NVENC / QSV / AMF / x264 ultrafast)
+    end
+
+    loop 实时流式录制
+        FFmpeg->>Disk: 硬件流式编码落盘 (稳定 60 FPS, 丢帧 drop=0)
+    end
+
+    App->>Cmd: stop_recording()
+    Cmd->>Pipe: stop()
+    
+    rect rgb(255, 245, 238)
+    note over Pipe,FFmpeg: 平滑优雅停机机制 (Graceful Finalization)
+    Pipe->>FFmpeg: 向 stdin 写入 'q\n' 控制信号 (非 SIGKILL 强杀)
+    FFmpeg->>Disk: 刷新编码器缓冲，重写 moov atom 关键索引至文件头 (+faststart)
+    FFmpeg-->>Pipe: 进程正常退出 (Exit Code 0)
+    end
+
+    Pipe->>Cmd: 返回录制路径、时长与文件大小
+    Cmd->>App: 还原主窗口并置顶聚焦，广播 media-saved 与 recording-stopped 事件
+```
+
+---
+
+### 3. Win32 全局快捷键热重载与系统托盘架构
+
+传统桌面应用修改全局快捷键往往需要重启程序。OneCapture 深度利用 Win32 线程级消息队列 (`PostThreadMessageW` + `GetMessageW`)，打造了无需重启软件、保存即生效的快捷键热重载引擎与常驻系统托盘机制：
+
+```mermaid
+flowchart TD
+    subgraph UI["通用与快捷键设置 UI"]
+        Input["交互式快捷键录制器\n(自动捕获修饰键与功能键)"]
+        SaveBtn["点击 '保存设置配置'"]
+    end
+
+    subgraph RustCmd["Rust settings_cmd"]
+        SaveFunc["save_settings()"]
+        DiskJSON[("写入 settings.json")]
+        ReloadSignal["reload_global_hotkeys()"]
+    end
+
+    subgraph HotkeyThread["独立 Win32 消息循环监听线程"]
+        Peek["PeekMessageW (强制初始化线程消息队列)"]
+        ThreadID["记录 Win32 GetCurrentThreadId()"]
+        Loop["GetMessageW(&msg) 阻塞等待消息"]
+        
+        BranchMsg{收到消息类型}
+        WM_HOTKEY["WM_HOTKEY (用户按下快捷键)"]
+        WM_RELOAD["WM_USER + 100 (重新加载信号)"]
+        
+        EmitEvent["Tauri Emitter 广播事件\n(global-hotkey-*)"]
+        ReRegister["1. UnregisterHotKey 全量注销旧热键\n2. 从 settings.json 重新加载\n3. RegisterHotKey 注册新按键组合"]
+    end
+
+    subgraph TrayArea["Windows 屏幕右下角状态栏 (System Tray)"]
+        Tray["常驻托盘图标 (OneCapture)"]
+        TrayLeft["左键单击: 智能唤醒 / 最小化主窗口"]
+        TrayRight["右键菜单: 截图 / 录屏 / 打开主界面 / 退出"]
+        CloseIntercept["主窗口右上角 X 拦截: prevent_close() -> hide() 隐藏至托盘"]
+    end
+
+    Input --> SaveBtn
+    SaveBtn --> SaveFunc
+    SaveFunc --> DiskJSON
+    SaveFunc --> ReloadSignal
+    ReloadSignal -->|PostThreadMessageW| Loop
+
+    Loop --> BranchMsg
+    BranchMsg -->|WM_HOTKEY| WM_HOTKEY --> EmitEvent
+    BranchMsg -->|WM_USER + 100| WM_RELOAD --> ReRegister
+
+    Tray --> TrayLeft
+    Tray --> TrayRight
+    CloseIntercept --> Tray
+```
+
+---
+
+### 4. Snipaste 风格桌面多张贴图 (Multi-Pin) 调度原理
+
+```mermaid
+graph LR
+    subgraph Capture["1. 屏幕捕捉与选区"]
+        GDI["GDI BitBlt 抓屏"] --> Freeze["冻结生成高清位图"]
+        Freeze --> Crop["像素级物理切片 (getPhysicalCropRect)"]
+    end
+
+    subgraph PinCreation["2. 贴图创建与通信"]
+        Crop --> Base64["导出 Base64 PNG 数据"]
+        Base64 --> CreateCmd["create_pin_window IPC 指令"]
+        CreateCmd --> PinManager["Rust PinManager 注册实例"]
+    end
+
+    subgraph PinWindow["3. 独立多张贴图窗口"]
+        PinManager --> WebviewWindow["创建独立透明穿透无边框 Webview\n(always_on_top: true, skip_taskbar: true)"]
+        WebviewWindow --> SpawnLocation["按截图屏幕绝对物理坐标 (X, Y, W, H) 原位生成"]
+        SpawnLocation --> Interactive["滚轮平滑缩放 [0.2x ~ 5.0x]\n鼠标左键拖拽平移\n双击 / Esc 销毁关闭"]
+    end
+```
+
+---
+
+### 5. 零拷贝屏幕抓取与遮罩标注管线
+
+```mermaid
+flowchart TB
+    StartTrigger["触发截屏 (F1 / UI 点击 / 托盘菜单)"] --> WinMin["主窗口平滑最小化至任务栏 (零遮挡)"]
+    WinMin --> GDICapture["Win32 原生 GDI 抓屏 (GetDC + CreateCompatibleDC)"]
+    GDICapture --> MemAlloc["CreateDIBSection 开辟 32 位位图内存"]
+    MemAlloc --> BitBltCopy["BitBlt 瞬时内存对拷 (时延 < 16ms)"]
+    BitBltCopy --> SIMDConvert["SIMD 4 字节块 BGRA -> RGBA 重排"]
+    SIMDConvert --> WebviewOverlay["推送到全屏透明置顶遮罩 (overlay.html)"]
+    
+    subgraph CanvasLayers["双 Canvas 分层矢量渲染引擎"]
+        BGCanvas["底层 Background Canvas: 高清屏幕静态冻结图"]
+        AnnotCanvas["顶层 Interaction Canvas: 矢量笔迹、箭头、矩形、文字"]
+        MagLayer["8 倍超采样放大镜与像素十六进制取色器 (#HEX)"]
+    end
+
+    WebviewOverlay --> CanvasLayers
+    CanvasLayers --> ActionChoice{"用户操作"}
+    
+    ActionChoice -->|F3 / 点击贴图| PinAction["生成桌面独立置顶贴图 (主窗口不抢焦点)"]
+    ActionChoice -->|Enter / 点击复制| CopyAction["写入 Windows 系统剪贴板 (PNG Blob)"]
+    ActionChoice -->|Ctrl+S / 点击保存| SaveAction["写入本地存储目录并同步至历史画廊"]
+    ActionChoice -->|Esc / 取消| CloseAction["退出遮罩，右下角托盘/任务栏随时可召回"]
+```
+
+---
+
 ## 快速开始与编译构建
 
 ### 环境前置要求
@@ -200,9 +427,9 @@ cargo test
 | 默认快捷键 | 功能动作 | 说明 |
 | :--- | :--- | :--- |
 | `F1` | 立即截屏圈选 | 冻结当前屏幕并弹出放大镜与标注工具栏 |
-| `F7` | 开始 / 停止屏幕录制 | 支持全屏或指定区域录制 |
+| `F7` | 开始 / 停止屏幕录制 | 支持全屏或指定区域录制 (自动最小化避开界面) |
 | `F8` | 开始 / 停止声音录制 | 独立无损高保真音频录制 |
-| `F2` | 贴图至桌面 | 在截图区域完成时直接将其固化悬浮展示 |
+| `F3` | 贴图至桌面 | 在截图区域完成时直接将其固化悬浮置顶展示 |
 | `Ctrl + Shift + X` | 强制停止录制 | 随时中断并安全封包保存媒体文件 |
 | `Esc` / `双击贴图` | 关闭 / 取消贴图 | 快速退出当前选区或贴图窗口 |
 | `滚轮滑动` | 缩放贴图 | 贴图窗口鼠标滚轮无级缩放大小 |
