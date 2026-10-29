@@ -10,23 +10,40 @@
 
 OneCapture 是专为 Windows 平台打造的高性能一站式媒体捕捉与桌面生产力套件。底层采用系统级语言 **Rust** 构建高效底层引擎，结合硬件加速编码管道（NVIDIA NVENC / AMD AMF / Intel QSV）与 Win32 原生虚拟桌面内存截屏技术，前端采用现代亚克力与赛博朋克双视觉交互界面，致力于提供极致轻量、瞬间响应、极低资源占用的桌面级捕捉体验。
 
+> [!IMPORTANT]
+> ### 💻 操作系统支持矩阵 (Supported Operating Systems)
+> | 操作系统 | 支持状态 | 架构与运行环境 | 核心说明 |
+> | :--- | :---: | :--- | :--- |
+> | **Windows 11 (64-bit)** | **✅ 完美原生支持** | x86_64 / 内置 Edge WebView2 | 深度硬件加速、DWM 扩展框架边界吸附探测 |
+> | **Windows 10 (64-bit, 1809+)** | **✅ 完美原生支持** | x86_64 / 内置 Edge WebView2 | 原生 Win32 消息泵、WASAPI 环回混音 |
+> | **Windows 7 / 8** | ⚠️ 需手动补丁 | 微软已终止支持 | 需手动安装 Microsoft Edge WebView2 Runtime |
+> | **macOS (Apple Silicon / Intel)** | ❌ 暂不支持 | 暂未适配 | 计划演进中（拟采用 ScreenCaptureKit / CoreAudio） |
+> | **Linux (X11 / Wayland)** | ❌ 暂不支持 | 暂未适配 | 计划演进中（拟采用 PipeWire / XShm） |
+>
+> 💡 **为什么深度绑定 Windows？**  
+> OneCapture 为了追求极低内存占用（约 30MB）与极限响应（冻屏时延 < 16ms），核心层完全摒弃了低效通用的跨平台抽象层，直接针对 Windows 原生内核进行了极致优化：包括 Win32 GDI 零拷贝内存映射（`CreateDIBSection` + `BitBlt`）、DWM 窗口边缘阴影裁剪、DirectShow 硬件时钟对齐、WASAPI 系统音频内录回环以及基于独立线程消息队列（`PostThreadMessageW` + `GetMessageW`）的全局快捷键瞬时热重载。
+
 ---
 
 ## 目录
+- [操作系统支持矩阵](#-操作系统支持矩阵-supported-operating-systems)
+- [Window UI 渲染与嵌套原理](#window-ui-渲染与嵌套原理-tauri-v2--webview2-架构)
 - [功能全览](#功能全览)
   - [1. 屏幕录制](#1-屏幕录制)
   - [2. 独立声音录制](#2-独立声音录制)
   - [3. 区域截图与桌面贴图 (Snipaste 体验)](#3-区域截图与桌面贴图-snipaste-体验)
   - [4. 桌面悬浮控制工具条](#4-桌面悬浮控制工具条)
   - [5. 全局快捷键与扩展配置](#5-全局快捷键与扩展配置)
+  - [6. 多语言与视觉主题系统](#6-多语言与视觉主题系统)
 - [性能指标与底层优化](#性能指标与底层优化)
 - [技术架构与设计规范](#技术架构与设计规范)
 - [系统架构与核心技术实现详解 (Mermaid 图解)](#系统架构与核心技术实现详解-mermaid-图解)
   - [1. 总体分层架构图](#1-总体分层架构图)
-  - [2. 硬件加速屏幕录制与时钟对齐原理](#2-硬件加速屏幕录制与时钟对齐原理)
-  - [3. Win32 全局快捷键热重载与系统托盘架构](#3-win32-全局快捷键热重载与系统托盘架构)
-  - [4. Snipaste 风格桌面多张贴图调度原理](#4-snipaste-风格桌面多张贴图调度原理)
-  - [5. 零拷贝屏幕抓取与遮罩标注管线](#5-零拷贝屏幕抓取与遮罩标注管线)
+  - [2. Window UI 渲染与嵌套原理](#window-ui-渲染与嵌套原理-tauri-v2--webview2-架构)
+  - [3. 硬件加速屏幕录制与时钟对齐原理](#3-硬件加速屏幕录制与时钟对齐原理)
+  - [4. Win32 全局快捷键热重载与系统托盘架构](#4-win32-全局快捷键热重载与系统托盘架构)
+  - [5. Snipaste 风格桌面多张贴图调度原理](#5-snipaste-风格桌面多张贴图调度原理)
+  - [6. 零拷贝屏幕抓取与遮罩标注管线](#6-零拷贝屏幕抓取与遮罩标注管线)
 - [快速开始与编译构建](#快速开始与编译构建)
 - [单元测试与质量保障](#单元测试与质量保障)
 - [快捷键清单](#快捷键清单)
@@ -221,7 +238,52 @@ graph TB
 
 ---
 
-### 2. 硬件加速屏幕录制与时钟对齐原理
+### 2. Window UI 渲染与嵌套原理 (Tauri v2 + WebView2 架构)
+
+界面的展现形式本质上是**将现代 Web 前端（HTML5 + CSS3 + TypeScript / Vite）嵌套并运行在 Windows 原生的 WebView2 渲染容器中**。与传统的 Electron “浏览器整包套壳”不同，OneCapture 采用了轻量解耦的 **Tauri v2 + Edge WebView2** 架构：
+
+```mermaid
+graph TB
+    subgraph OS["Windows 操作系统环境"]
+        WebView2["系统内置 Microsoft Edge WebView2 (Chromium 渲染引擎)"]
+        Win32GDI["Win32 GDI / DWM / WASAPI 系统底层驱动"]
+    end
+
+    subgraph RustNative["Rust 原生引擎核心 (Native Binary，无 Node.js 运行时)"]
+        Capture["GDI 内存映射抓屏 (SIMD 字节重排)"]
+        AudioEngine["双声源 Tanh 软限幅混音器"]
+        Hotkeys["独立 Win32 线程消息队列 (热重载)"]
+        Encoder["硬件加速转码管道 (NVENC/QSV/AMF)"]
+    end
+
+    subgraph WebViews["多窗口 Web 视图 (HTML5 / CSS3 / TypeScript / Vite)"]
+        MainWin["主面板 (index.html) - 控制中心仪表盘"]
+        OverlayWin["截图标注层 (overlay.html) - 全屏置顶无边框透明视窗"]
+        PinWins["独立贴图 (pin.html * N) - 独立多张桌面置顶穿透窗口"]
+        FloatBar["录制胶囊 (floating-bar.html) - 桌面迷你悬浮控制器"]
+    end
+
+    Win32GDI <--> RustNative
+    WebView2 --- WebViews
+    RustNative <-->|"Tauri IPC 二进制/JSON 桥梁 (微秒级响应，零中间层开销)"| WebViews
+```
+
+#### 核心机制与架构优势：
+1. **系统原生渲染容器，彻底告别臃肿**：
+   - 传统 Electron 强制在每个安装包内捆绑完整的 Chromium 浏览器和 Node.js 运行时，导致应用体积膨胀（150MB+）且常驻内存高达 200MB~450MB；
+   - OneCapture 复用 Windows 10/11 操作系统自带的 **Microsoft Edge WebView2** 控件，去除全部 Node.js 开销，最终打包二进制体积仅十余兆，开机常驻内存仅 **~32MB**。
+2. **多窗口（Multi-Window）原生协同机制**：
+   - **主控制台 (`index.html`)**：标准窗口，承载丰富现代的双语设置、状态指示与仪表盘；
+   - **全屏截图标注遮罩 (`overlay.html`)**：全屏、无边框、强制置顶（`always_on_top`）、透明背景。按快捷键时在 16ms 内瞬间唤醒呈现；
+   - **桌面多张贴图 (`pin.html * N`)**：每个贴图均为独立的无边框透明 WebView 实例，互不干扰，利用前端 DOM 的强大能力实现 20%~500% 滚轮平滑缩放与自由拖拽；
+   - **悬浮录制胶囊 (`floating-bar.html`)**：独立的桌面级无边框置顶胶囊，跳过任务栏（`skip_taskbar`），实时更新录制时钟与 VU 功率。
+3. **职责明确的极致分工**：
+   - **Rust 负责重活硬活**：硬件编码流水线、内存位图映射、双通道混音与软限制、Win32 线程消息循环；
+   - **Web UI 负责颜值与交互**：赛博朋克霓虹光晕、极光磨砂玻璃毛玻璃（CSS3 `backdrop-filter`）、矢量标注画布与全动态双语切换。
+
+---
+
+### 3. 硬件加速屏幕录制与时钟对齐原理
 
 在 Windows 音视频同步录制中，画面极度卡顿（数秒跳动一次）的根本原因在于 **多路输入源的时间戳纪元冲突**：
 - Windows `gdigrab` 桌面图像采集器的时间戳基于 Unix Epoch 纪元时钟（约 17 亿秒）；
@@ -272,7 +334,7 @@ sequenceDiagram
 
 ---
 
-### 3. Win32 全局快捷键热重载与系统托盘架构
+### 4. Win32 全局快捷键热重载与系统托盘架构
 
 传统桌面应用修改全局快捷键往往需要重启程序。OneCapture 深度利用 Win32 线程级消息队列 (`PostThreadMessageW` + `GetMessageW`)，打造了无需重启软件、保存即生效的快捷键热重载引擎与常驻系统托盘机制：
 
@@ -326,7 +388,7 @@ flowchart TD
 
 ---
 
-### 4. Snipaste 风格桌面多张贴图 (Multi-Pin) 调度原理
+### 5. Snipaste 风格桌面多张贴图 (Multi-Pin) 调度原理
 
 ```mermaid
 graph LR
@@ -350,7 +412,7 @@ graph LR
 
 ---
 
-### 5. 零拷贝屏幕抓取与遮罩标注管线
+### 6. 零拷贝屏幕抓取与遮罩标注管线
 
 ```mermaid
 flowchart TB

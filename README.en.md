@@ -13,9 +13,24 @@
 
 OneCapture is a lightweight, high-performance desktop media capture and productivity suite engineered specifically for Windows. The underlying engine is built with system-level **Rust**, integrating hardware-accelerated encoding pipelines (NVIDIA NVENC / AMD AMF / Intel QSV) and Win32 native virtual screen memory capture. The front-end leverages modern glassmorphism (Cyberpunk & Acrylic themes) to deliver instantaneous response, seamless ergonomics, and minimal system resource consumption.
 
+> [!IMPORTANT]
+> ### 💻 Operating System Support Matrix
+> | Operating System | Support Status | Architecture & Runtime | Key Details |
+> | :--- | :---: | :--- | :--- |
+> | **Windows 11 (64-bit)** | **✅ Full Native Support** | x86_64 / Built-in Edge WebView2 | Deep hardware acceleration, DWM extended frame bounds snapping |
+> | **Windows 10 (64-bit, 1809+)** | **✅ Full Native Support** | x86_64 / Built-in Edge WebView2 | Native Win32 message pump, WASAPI system audio loopback |
+> | **Windows 7 / 8** | ⚠️ Manual Runtime Required | End-of-Life by Microsoft | Requires manual installation of Microsoft Edge WebView2 Runtime |
+> | **macOS (Apple Silicon / Intel)** | ❌ Not Currently Supported | Planned Evolution | On roadmap (planned using ScreenCaptureKit & CoreAudio) |
+> | **Linux (X11 / Wayland)** | ❌ Not Currently Supported | Planned Evolution | On roadmap (planned using PipeWire & XShm) |
+>
+> 💡 **Why Windows-Specific Native Optimization?**  
+> To achieve an ultra-lightweight memory footprint (~32MB) and sub-16ms screen freeze response, OneCapture avoids heavy, generic multi-platform abstraction layers. Instead, its core is directly tuned for Windows native subsystems: Win32 GDI zero-copy shared memory bitmaps (`CreateDIBSection` + `BitBlt`), DWM window border clipping, DirectShow hardware master clock synchronization, WASAPI system audio loopback mixing, and instantaneous hot-reloadable shortcuts via dedicated Win32 thread message loops (`PostThreadMessageW` + `GetMessageW`).
+
 ---
 
 ## Table of Contents
+- [Operating System Support Matrix](#-operating-system-support-matrix)
+- [Window UI Rendering & Architecture (Tauri v2 + WebView2)](#2-window-ui-rendering--multi-view-architecture-tauri-v2--webview2)
 - [Feature Highlights](#feature-highlights)
   - [1. Screen Recording](#1-screen-recording)
   - [2. Standalone Audio Recording](#2-standalone-audio-recording)
@@ -26,10 +41,11 @@ OneCapture is a lightweight, high-performance desktop media capture and producti
 - [Performance Benchmarks](#performance-benchmarks)
 - [System Architecture & Core Technical Implementation (Mermaid)](#system-architecture--core-technical-implementation-mermaid)
   - [1. Overall Layered Architecture](#1-overall-layered-architecture)
-  - [2. Hardware-Accelerated Video Pipeline & Master Clock Synchronization](#2-hardware-accelerated-video-pipeline--master-clock-synchronization)
-  - [3. Win32 Global Hotkey Hot-Reload & System Tray Life Cycle](#3-win32-global-hotkey-hot-reload--system-tray-life-cycle)
-  - [4. Snipaste-Style Multi-Pin Window Scheduling Engine](#4-snipaste-style-multi-pin-window-scheduling-engine)
-  - [5. Zero-Copy Screen Grabbing & Dual-Canvas Annotation Pipeline](#5-zero-copy-screen-grabbing--dual-canvas-annotation-pipeline)
+  - [2. Window UI Rendering & Multi-View Architecture (Tauri v2 + WebView2)](#2-window-ui-rendering--multi-view-architecture-tauri-v2--webview2)
+  - [3. Hardware-Accelerated Video Pipeline & Master Clock Synchronization](#3-hardware-accelerated-video-pipeline--master-clock-synchronization)
+  - [4. Win32 Global Hotkey Hot-Reload & System Tray Life Cycle](#4-win32-global-hotkey-hot-reload--system-tray-life-cycle)
+  - [5. Snipaste-Style Multi-Pin Window Scheduling Engine](#5-snipaste-style-multi-pin-window-scheduling-engine)
+  - [6. Zero-Copy Screen Grabbing & Dual-Canvas Annotation Pipeline](#6-zero-copy-screen-grabbing--dual-canvas-annotation-pipeline)
 - [Quick Start & Compilation](#quick-start--compilation)
 - [Unit Testing & Quality Assurance](#unit-testing--quality-assurance)
 - [Hotkey Reference](#hotkey-reference)
@@ -185,7 +201,54 @@ graph TB
 
 ---
 
-### 2. Hardware-Accelerated Video Pipeline & Master Clock Synchronization
+### 2. Window UI Rendering & Multi-View Architecture (Tauri v2 + WebView2)
+
+A common architectural question is: *"Does the window UI run by embedding a Web UI inside native desktop containers?"*
+
+**Yes, absolutely.** OneCapture embeds and renders a modern Web front-end (HTML5 + CSS3 + TypeScript / Vite) inside Windows native **Microsoft Edge WebView2 (Chromium engine)** instances. However, unlike traditional bloated Electron wrappers, OneCapture utilizes the lightweight **Tauri v2 + Rust Native Core** architecture:
+
+```mermaid
+graph TB
+    subgraph OS["Windows Operating System Environment"]
+        WebView2["Built-in Microsoft Edge WebView2 (Chromium Engine)"]
+        Win32GDI["Win32 GDI / DWM / WASAPI Native Drivers"]
+    end
+
+    subgraph RustNative["Rust Native Core Engine (Native Binary, Zero Node.js Overhead)"]
+        Capture["GDI Memory-Mapped Grabbing (SIMD Byte Reordering)"]
+        AudioEngine["Dual-Source Tanh Soft-Knee Saturation Mixer"]
+        Hotkeys["Dedicated Win32 Thread Message Loop (Instant Hot-Reload)"]
+        Encoder["Hardware Accelerated Video Transcoding Pipeline (NVENC/QSV/AMF)"]
+    end
+
+    subgraph WebViews["Multi-Window Webviews (HTML5 / CSS3 / TypeScript / Vite)"]
+        MainWin["Dashboard Window (index.html) - Settings & Recording Controls"]
+        OverlayWin["Snip Canvas Overlay (overlay.html) - Fullscreen Frameless Transparent Window"]
+        PinWins["Independent Desktop Pins (pin.html * N) - Frameless Always-On-Top Scalable Windows"]
+        FloatBar["Recording Capsule (floating-bar.html) - Frameless Desktop Miniature Pill"]
+    end
+
+    Win32GDI <--> RustNative
+    WebView2 --- WebViews
+    RustNative <-->|"Tauri IPC Binary/JSON Bridge (Microsecond Latency, Zero Middleware)"| WebViews
+```
+
+#### Core Mechanisms & Architectural Advantages:
+1. **OS-Native Rendering Container (Zero Bloat)**:
+   - Traditional Electron apps bundle a complete Chromium browser and Node.js runtime inside every installer, resulting in massive installer sizes (150MB+) and heavy idle memory consumption (200MB ~ 450MB);
+   - OneCapture reuses the pre-installed **Microsoft Edge WebView2** runtime built into Windows 10/11. With zero Node.js overhead, the compiled binary is only ~10MB, and idle memory usage remains at a low **~32MB**.
+2. **Multi-Window Native Coordination**:
+   - **Main Dashboard (`index.html`)**: Standard window housing bilingual preferences, hardware configurations, and gallery history;
+   - **Fullscreen Snip Overlay (`overlay.html`)**: Transparent, borderless, and forced always-on-top (`always_on_top: true`). Awakens and renders in sub-16ms;
+   - **Desktop Multi-Pinning (`pin.html * N`)**: Each pinned screenshot spawns as an independent transparent WebView instance. It leverages the DOM for smooth 20%~500% mouse wheel scaling and drag-and-drop repositioning;
+   - **Desktop Floating Capsule (`floating-bar.html`)**: Non-intrusive borderless capsule running with `skip_taskbar: true`, continuously streaming real-time recording timers and VU audio meters.
+3. **Decoupled Separation of Concerns**:
+   - **Rust Engine handles heavy, time-critical tasks**: Raw GDI memory bitblt capture, hardware encoder pipes, soft-knee audio limiting, and Win32 thread message loops;
+   - **Web UI handles aesthetics and ergonomic interaction**: Cyberpunk neon accents, Acrylic frosted glass (`backdrop-filter`), vector drawing canvas, and instantaneous locale switching.
+
+---
+
+### 3. Hardware-Accelerated Video Pipeline & Master Clock Synchronization
 
 ```mermaid
 sequenceDiagram
@@ -229,7 +292,7 @@ sequenceDiagram
 
 ---
 
-### 3. Win32 Global Hotkey Hot-Reload & System Tray Life Cycle
+### 4. Win32 Global Hotkey Hot-Reload & System Tray Life Cycle
 
 ```mermaid
 flowchart TD
@@ -281,7 +344,7 @@ flowchart TD
 
 ---
 
-### 4. Snipaste-Style Multi-Pin Window Scheduling Engine
+### 5. Snipaste-Style Multi-Pin Window Scheduling Engine
 
 ```mermaid
 graph LR
@@ -305,7 +368,7 @@ graph LR
 
 ---
 
-### 5. Zero-Copy Screen Grabbing & Dual-Canvas Annotation Pipeline
+### 6. Zero-Copy Screen Grabbing & Dual-Canvas Annotation Pipeline
 
 ```mermaid
 flowchart TB

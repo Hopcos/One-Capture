@@ -262,14 +262,6 @@ body {
   box-shadow: 0 2px 10px rgba(0, 240, 255, 0.35);
 }
 
-/* Sidebar Storage Card */
-.sidebar-storage-card {
-  background: var(--bg-card);
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-}
-
 /* ==========================================================================
    Main Viewports & Spacing System (Generous, Modern, Breathable)
    ========================================================================== */

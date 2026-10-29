@@ -580,10 +580,7 @@ async function loadSettings() {
     const activeLang = (settings.language as Language) || "zh-CN";
     setLanguage(activeLang);
 
-    const sidebarOutput = document.getElementById("sidebarOutputPath");
     const settingOutput = document.getElementById("settingOutputDir") as HTMLInputElement;
-
-    if (sidebarOutput) sidebarOutput.textContent = settings.output_dir;
     if (settingOutput) settingOutput.value = settings.output_dir;
 
     const hkSnip = document.getElementById("hkSnip") as HTMLInputElement;
@@ -903,12 +900,6 @@ function setupGalleryHandlers() {
   const btnRefresh = document.getElementById("btnRefreshGallery");
   btnRefresh?.addEventListener("click", async () => {
     await loadMediaGallery();
-  });
-
-  const sidebarOutput = document.getElementById("sidebarOutputPath");
-  sidebarOutput?.addEventListener("click", async () => {
-    const settings = await invoke<AppSettings>("get_settings");
-    await invoke("open_output_folder", { path: settings.output_dir });
   });
 }
 
