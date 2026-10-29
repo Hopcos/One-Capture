@@ -96,11 +96,18 @@
   user-select: none;
 }
 
+html, body {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
 body {
   background: var(--bg-gradient);
   background-color: var(--bg-app);
   color: var(--text-primary);
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
   display: flex;
   overflow: hidden;
   transition: background 0.3s ease, color 0.3s ease;
@@ -112,6 +119,9 @@ body {
 
 .sidebar {
   width: 250px;
+  height: 100vh;
+  max-height: 100vh;
+  flex-shrink: 0;
   background: var(--bg-sidebar);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -119,8 +129,9 @@ body {
   display: flex;
   flex-direction: column;
   padding: 24px 16px;
-  gap: 20px;
+  gap: 16px;
   transition: border-color 0.3s ease;
+  overflow: hidden;
 }
 
 .brand {
@@ -195,6 +206,8 @@ body {
 
 /* Sidebar Theme Switcher */
 .sidebar-theme-card {
+  margin-top: auto;
+  flex-shrink: 0;
   background: var(--bg-card);
   padding: 12px 14px;
   border-radius: var(--radius-md);
@@ -268,9 +281,12 @@ body {
 
 .main-view {
   flex: 1;
+  height: 100vh;
+  max-height: 100vh;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px 44px 36px 44px;
 }
 

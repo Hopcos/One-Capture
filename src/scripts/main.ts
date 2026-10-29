@@ -298,7 +298,7 @@ function setupTabs() {
       item.classList.add("active");
       const activeTab = document.getElementById(`tab-${tabId}`);
       if (activeTab) {
-        activeTab.style.display = "block";
+        activeTab.style.display = "flex";
       }
 
       if (tabId === "screenshot") {
