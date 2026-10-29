@@ -1,8 +1,14 @@
+<div align="center">
+
 # OneCapture (一站式高性能捕捉套件)
+
+[English](README.en.md) | [简体中文](README.md)
 
 > **极低 CPU & 内存占用 · 极致响应 · 屏幕录制 · 声音录制 · 截图标注 · 桌面多张贴图**
 
-OneCapture 是专为 Windows 平台打造的高性能一站式媒体捕捉与桌面生产力套件。底层采用系统级语言 **Rust** 构建高效底层引擎，结合硬件加速编码管道（NVIDIA NVENC / AMD AMF / Intel QSV）与 Win32 原生虚拟桌面内存截屏技术，前端采用现代亚克力（Acrylic Glassmorphism）磨砂毛玻璃交互界面，致力于提供极致轻量、瞬间响应、极低资源占用的桌面级捕捉体验。
+</div>
+
+OneCapture 是专为 Windows 平台打造的高性能一站式媒体捕捉与桌面生产力套件。底层采用系统级语言 **Rust** 构建高效底层引擎，结合硬件加速编码管道（NVIDIA NVENC / AMD AMF / Intel QSV）与 Win32 原生虚拟桌面内存截屏技术，前端采用现代亚克力与赛博朋克双视觉交互界面，致力于提供极致轻量、瞬间响应、极低资源占用的桌面级捕捉体验。
 
 ---
 

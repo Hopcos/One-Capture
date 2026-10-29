@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "OneCapture - 一站式捕捉套件",
+        "title": "OneCapture",
         "width": 1020,
         "height": 720,
         "minWidth": 800,

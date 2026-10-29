@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { setLanguage, getLanguage, t, updateDOMTranslations, onLanguageChange, type Language } from "./i18n";
 
 interface AppSettings {
   output_dir: string;
@@ -21,6 +22,7 @@ interface AppSettings {
   default_audio_mode: string;
   floating_bar_enabled: boolean;
   theme: string;
+  language: string;
 }
 
 interface PinItem {
@@ -97,14 +99,14 @@ function resetRecordingUI() {
   if (btnScreen) {
     btnScreen.classList.remove("btn-danger");
     btnScreen.classList.add("btn-primary");
-    btnScreen.innerHTML = `<span>开始录制 (F7)</span>`;
+    btnScreen.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span data-i18n="btn_start_screen">${t("btn_start_screen")}</span>`;
   }
 
   const btnAudio = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
   if (btnAudio) {
     btnAudio.classList.remove("btn-danger");
     btnAudio.classList.add("btn-primary");
-    btnAudio.innerHTML = `<span>开始录音 (F8)</span>`;
+    btnAudio.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span data-i18n="btn_start_audio">${t("btn_start_audio")}</span>`;
   }
 }
 
@@ -120,13 +122,17 @@ window.addEventListener("DOMContentLoaded", async () => {
   setupAudioLevelSimulation();
   setupGlobalHotkeyListeners();
   setupEscapeKeyHandler();
+  onLanguageChange(() => {
+    refreshPinsList();
+    loadMediaGallery();
+  });
   refreshPinsList();
   await loadMediaGallery();
 
   await listen("media-saved", async () => {
     resetRecordingUI();
     loadMediaGallery();
-    showToast("✓ 录制完成已保存至存储目录", "success");
+    showToast(t("toast_recording_finished"), "success");
     try {
       const appWin = getCurrentWindow();
       await appWin.unminimize();
@@ -505,7 +511,8 @@ export async function switchTheme(newTheme: string) {
     const current = await invoke<AppSettings>("get_settings");
     current.theme = newTheme;
     await invoke("save_settings", { settings: current });
-    showToast(`✓ 主题已切换为：${newTheme === "cyberpunk" ? "⚡ 赛博朋克" : "🔮 极光暗黑"}`, "info", 1800);
+    const toastMsg = newTheme === "cyberpunk" ? t("toast_theme_cyberpunk") : t("toast_theme_acrylic");
+    showToast(toastMsg, "info", 1800);
   } catch (e) {
     console.warn("Failed to persist theme setting:", e);
   }
@@ -531,12 +538,47 @@ function setupThemeHandlers() {
   });
 }
 
+function setupLanguageHandlers() {
+  // Topbar language pills
+  document.querySelectorAll("#langSwitchPills .lang-pill-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const lang = (btn.getAttribute("data-lang") as Language) || "zh-CN";
+      await switchLanguage(lang);
+    });
+  });
+
+  // Settings tab language pills
+  document.querySelectorAll("#langSettingsPills .pill-option").forEach((pill) => {
+    pill.addEventListener("click", async () => {
+      document.querySelectorAll("#langSettingsPills .pill-option").forEach((p) => p.classList.remove("active"));
+      pill.classList.add("active");
+      const lang = (pill.getAttribute("data-value") as Language) || "zh-CN";
+      await switchLanguage(lang);
+    });
+  });
+}
+
+export async function switchLanguage(newLang: Language) {
+  setLanguage(newLang);
+  try {
+    const current = await invoke<AppSettings>("get_settings");
+    current.language = newLang;
+    await invoke("save_settings", { settings: current });
+    showToast(t("toast_lang_switched"), "info", 1800);
+  } catch (e) {
+    console.warn("Failed to persist language setting:", e);
+  }
+}
+
 // Load Application Settings
 async function loadSettings() {
   try {
     const settings = await invoke<AppSettings>("get_settings");
     const activeTheme = settings.theme || "cyberpunk";
     applyTheme(activeTheme);
+
+    const activeLang = (settings.language as Language) || "zh-CN";
+    setLanguage(activeLang);
 
     const sidebarOutput = document.getElementById("sidebarOutputPath");
     const settingOutput = document.getElementById("settingOutputDir") as HTMLInputElement;
@@ -586,6 +628,7 @@ async function loadSettings() {
 // Screen & Audio Recording Controls
 function setupRecordingHandlers() {
   setupThemeHandlers();
+  setupLanguageHandlers();
 
   const btnScreen = document.getElementById("btnStartScreenRecord") as HTMLButtonElement;
   const btnAudio = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
@@ -618,7 +661,10 @@ function setupRecordingHandlers() {
     try {
       const current = await invoke<AppSettings>("get_settings");
       const themeActive = document.querySelector("#themePills .pill-option.active")?.getAttribute("data-value") || "cyberpunk";
+      const langActive = (document.querySelector("#langSettingsPills .pill-option.active")?.getAttribute("data-value") as Language) || "zh-CN";
       current.theme = themeActive;
+      current.language = langActive;
+      setLanguage(langActive);
 
       if (settingOutput?.value) current.output_dir = settingOutput.value;
       if (hkSnip?.value) current.hotkeys.snip = hkSnip.value.trim();
@@ -630,10 +676,10 @@ function setupRecordingHandlers() {
       }
 
       await invoke("save_settings", { settings: current });
-      showToast("✓ 快捷键与视觉主题配置已成功保存！", "success");
+      showToast(t("toast_settings_saved"), "success");
       await loadSettings();
     } catch (e) {
-      showToast("保存设置失败：" + e, "error");
+      showToast(t("toast_settings_failed") + e, "error");
     }
   });
 }
@@ -697,7 +743,7 @@ async function startScreenRecording() {
     if (btn) {
       btn.classList.remove("btn-primary");
       btn.classList.add("btn-danger");
-      btn.innerHTML = `<span>停止录制 (00:00)</span>`;
+      btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>${t("btn_stop_screen")} (00:00)</span>`;
     }
 
     startStatusPolling();
@@ -710,7 +756,7 @@ async function startScreenRecording() {
     } catch (e) {
       console.warn("Failed to restore window on error:", e);
     }
-    showToast("启动屏幕录制失败: " + err, "error");
+    showToast(t("toast_recording_failed") + err, "error");
   }
 }
 
@@ -738,11 +784,11 @@ async function startAudioRecording() {
     const btn = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
     btn.classList.remove("btn-primary");
     btn.classList.add("btn-danger");
-    btn.innerHTML = `<span>停止录音 (00:00)</span>`;
+    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>${t("btn_stop_audio")} (00:00)</span>`;
 
     startStatusPolling();
   } catch (err) {
-    showToast("启动声音录制失败: " + err, "error");
+    showToast(t("toast_recording_failed") + err, "error");
   }
 }
 
@@ -752,10 +798,10 @@ async function stopActiveRecording() {
     const result = await invoke<{ path: string; duration: string; size_bytes: number }>("stop_recording");
     resetRecordingUI();
     await loadMediaGallery();
-    showToast(`✓ 录制完成已保存！时长: ${result.duration}`, "success", 4000);
+    showToast(`${t("toast_recording_finished")} (${result.duration})`, "success", 4000);
   } catch (err) {
     resetRecordingUI();
-    showToast("停止录制失败: " + err, "error");
+    showToast(t("toast_stop_failed") + err, "error");
   }
 }
 
@@ -768,10 +814,10 @@ function startStatusPolling() {
       if (res.status === "recording") {
         if (currentRecordingType === "screen") {
           const btn = document.getElementById("btnStartScreenRecord");
-          if (btn) btn.innerHTML = `<span>停止录制 (${res.elapsed})</span>`;
+          if (btn) btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>${t("btn_stop_screen")} (${res.elapsed})</span>`;
         } else if (currentRecordingType === "audio") {
           const btn = document.getElementById("btnStartAudioRecord");
-          if (btn) btn.innerHTML = `<span>停止录音 (${res.elapsed})</span>`;
+          if (btn) btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>${t("btn_stop_audio")} (${res.elapsed})</span>`;
         }
       } else if (res.status === "idle" && isRecording) {
         resetRecordingUI();
@@ -798,7 +844,7 @@ async function refreshPinsList() {
     if (!container) return;
 
     if (pins.length === 0) {
-      container.innerHTML = `<div>暂无正在悬浮展示的贴图。截屏后点击工具栏“贴图”按钮即可将截图固定于桌面！</div>`;
+      container.innerHTML = `<div data-i18n="pins_empty">${t("pins_empty")}</div>`;
       return;
     }
 
@@ -818,10 +864,10 @@ async function refreshPinsList() {
           <img src="${pin.image_data_url}" style="width: 44px; height: 32px; object-fit: cover; border-radius: 4px;" />
           <div>
             <div style="font-weight: 600; color: #f8fafc;">${pin.title}</div>
-            <div style="font-size: 11px; color: var(--text-muted);">${pin.width} × ${pin.height} px | 缩放: ${(pin.scale * 100).toFixed(0)}%</div>
+            <div style="font-size: 11px; color: var(--text-muted);">${pin.width} × ${pin.height} px | ${t("pin_scale_prefix")}: ${(pin.scale * 100).toFixed(0)}%</div>
           </div>
         </div>
-        <button class="btn btn-secondary btn-close-pin" data-id="${pin.id}" style="padding: 6px 12px; font-size: 12px;">关闭取消</button>
+        <button class="btn btn-secondary btn-close-pin" data-id="${pin.id}" style="padding: 6px 12px; font-size: 12px;">${t("btn_close_pin")}</button>
       `;
 
       row.querySelector(".btn-close-pin")?.addEventListener("click", async () => {
@@ -874,14 +920,14 @@ async function loadMediaGallery() {
   try {
     const items = await invoke<MediaHistoryItem[]>("get_media_history");
     if (badge) {
-      badge.textContent = `共 ${items.length} 项`;
+      badge.textContent = `${t("gallery_count_prefix")}${items.length}${t("gallery_count_suffix")}`;
     }
 
     if (items.length === 0) {
       list.innerHTML = `
         <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 40px 0;">
           <div style="font-size: 32px; margin-bottom: 8px;">📁</div>
-          暂无历史媒体文件。进行录屏、录音或截图后，文件将自动汇总在此处。
+          ${t("gallery_empty")}
         </div>
       `;
       return;
@@ -901,16 +947,16 @@ async function loadMediaGallery() {
       row.style.gap = "14px";
 
       let typeIcon = "📹";
-      let typeLabel = "视频";
+      let typeLabel = t("media_type_video");
       let typeColor = "#38bdf8";
 
       if (item.media_type === "audio") {
         typeIcon = "🎵";
-        typeLabel = "音频";
+        typeLabel = t("media_type_audio");
         typeColor = "#a855f7";
       } else if (item.media_type === "image") {
         typeIcon = "📸";
-        typeLabel = "截图";
+        typeLabel = t("media_type_image");
         typeColor = "#10b981";
       }
 
@@ -930,13 +976,13 @@ async function loadMediaGallery() {
           </div>
         </div>
         <div style="display: flex; gap: 8px; flex-shrink: 0;">
-          <button class="btn btn-secondary btn-open-media" style="padding: 5px 10px; font-size: 12px;" title="使用默认程序打开">
-            ▶️ 打开
+          <button class="btn btn-secondary btn-open-media" style="padding: 5px 10px; font-size: 12px;" title="${t("media_open_tooltip")}">
+            ▶️ ${t("btn_media_open")}
           </button>
-          <button class="btn btn-secondary btn-locate-media" style="padding: 5px 10px; font-size: 12px;" title="在文件管理器中定位">
-            📂 定位
+          <button class="btn btn-secondary btn-locate-media" style="padding: 5px 10px; font-size: 12px;" title="${t("media_locate_tooltip")}">
+            📂 ${t("btn_media_locate")}
           </button>
-          <button class="btn btn-delete-media" style="padding: 5px 9px; font-size: 12px; background: rgba(244,63,94,0.15); color: #f43f5e; border: 1px solid rgba(244,63,94,0.3); border-radius: 6px; cursor: pointer;" title="删除此文件">
+          <button class="btn btn-delete-media" style="padding: 5px 9px; font-size: 12px; background: rgba(244,63,94,0.15); color: #f43f5e; border: 1px solid rgba(244,63,94,0.3); border-radius: 6px; cursor: pointer;" title="${t("media_delete_tooltip")}">
             🗑️
           </button>
         </div>
@@ -946,7 +992,7 @@ async function loadMediaGallery() {
         try {
           await invoke("open_media_file", { path: item.path });
         } catch (err) {
-          showToast("打开文件失败: " + err, "error");
+          showToast(t("toast_open_file_failed") + err, "error");
         }
       });
 
@@ -954,17 +1000,17 @@ async function loadMediaGallery() {
         try {
           await invoke("open_media_folder", { path: item.path });
         } catch (err) {
-          showToast("定位文件失败: " + err, "error");
+          showToast(t("toast_locate_file_failed") + err, "error");
         }
       });
 
       row.querySelector(".btn-delete-media")?.addEventListener("click", async () => {
         try {
           await invoke("delete_media_file", { path: item.path });
-          showToast(`已删除: ${item.name}`);
+          showToast(`${t("toast_deleted_prefix")}: ${item.name}`);
           await loadMediaGallery();
         } catch (err) {
-          showToast("删除失败: " + err, "error");
+          showToast(t("toast_delete_failed") + err, "error");
         }
       });
 
@@ -973,7 +1019,7 @@ async function loadMediaGallery() {
   } catch (err) {
     console.error("Failed to load media history:", err);
     if (list) {
-      list.innerHTML = `<div style="color: #f43f5e; font-size: 13px;">加载历史记录失败: ${err}</div>`;
+      list.innerHTML = `<div style="color: #f43f5e; font-size: 13px;">${t("gallery_load_failed")}${err}</div>`;
     }
   }
 }

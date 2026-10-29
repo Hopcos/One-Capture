@@ -37,6 +37,12 @@ pub struct AppSettings {
     pub default_audio_mode: String,
     pub floating_bar_enabled: bool,
     pub theme: String,
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+pub fn default_language() -> String {
+    "zh-CN".to_string()
 }
 
 impl Default for AppSettings {
@@ -58,6 +64,7 @@ impl Default for AppSettings {
             default_audio_mode: "both_mixed".to_string(),
             floating_bar_enabled: true,
             theme: "cyberpunk".to_string(),
+            language: default_language(),
         }
     }
 }
