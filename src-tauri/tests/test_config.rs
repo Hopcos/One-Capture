@@ -4,8 +4,9 @@ use onecapture_lib::config::AppSettings;
 fn test_default_settings() {
     let settings = AppSettings::default();
     assert_eq!(settings.hotkeys.snip, "F1");
-    assert_eq!(settings.hotkeys.screen_record, "F7");
-    assert_eq!(settings.hotkeys.audio_record, "F8");
+    assert_eq!(settings.hotkeys.screen_record, "F6");
+    assert_eq!(settings.hotkeys.audio_record, "F7");
+    assert_eq!(settings.hotkeys.stop_record, "F9");
     assert_eq!(settings.default_video_format, "mp4");
     assert_eq!(settings.default_audio_format, "aac");
     assert!(settings.floating_bar_enabled);

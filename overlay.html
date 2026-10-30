@@ -9,8 +9,8 @@
 <body>
   <canvas id="overlayCanvas"></canvas>
 
-  <!-- Always-Visible Fixed Top Bar (Cannot get trapped in fullscreen!) -->
-  <div class="fixed-top-bar" id="fixedTopBar">
+  <!-- Always-Visible Fixed Top Bar (Only displayed in record_region mode; cleanly hidden in screenshot mode) -->
+  <div class="fixed-top-bar" id="fixedTopBar" style="display: none;">
     <div class="hint-pill">
       <span class="mode-tag" id="overlayModeTag">截图圈选模式</span>
       <span id="overlayHintText">按住鼠标左键拖拽框选 | 右键单击或按 ESC 即可立即退出</span>

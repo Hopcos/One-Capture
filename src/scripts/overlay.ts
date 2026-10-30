@@ -196,12 +196,14 @@ function setupEventListeners() {
   // Listen for mode changes
   listen<{ mode: "screenshot" | "record_region" }>("set-overlay-mode", (event) => {
     currentMode = event.payload.mode;
+    const fixedTopBar = document.getElementById("fixedTopBar");
     if (currentMode === "record_region") {
+      if (fixedTopBar) fixedTopBar.style.display = "flex";
       overlayModeTag.textContent = "🎥 录屏选区模式 (1:1 比例)";
       overlayHintText.textContent = "拖拽框选录制范围 | 可拖动8个控制把手调整 | 按 Enter 或双击确认 | 按 ESC 退出";
     } else {
-      overlayModeTag.textContent = "📸 截图圈选模式";
-      overlayHintText.textContent = "按住鼠标左键拖拽选区 | 标注后点击复制或贴图 | 点击右上角或按 ESC 退出";
+      // 截图模式：完全移除右上角的任何提示或悬浮条，保持纯净截屏视野
+      if (fixedTopBar) fixedTopBar.style.display = "none";
     }
     cropRect = null;
     annotations = [];

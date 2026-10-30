@@ -1,6 +1,6 @@
 use onecapture_lib::hotkey::parse_hotkey_string;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, VK_F1, VK_F7, VK_F8,
+    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, VK_F1, VK_F6, VK_F7, VK_F8, VK_F9,
 };
 
 #[test]
@@ -9,12 +9,20 @@ fn test_parse_single_function_key() {
     assert_eq!(parsed_f1.modifiers, MOD_NOREPEAT);
     assert_eq!(parsed_f1.vk_code, VK_F1 as u32);
 
+    let parsed_f6 = parse_hotkey_string("F6").expect("Failed to parse F6");
+    assert_eq!(parsed_f6.modifiers, MOD_NOREPEAT);
+    assert_eq!(parsed_f6.vk_code, VK_F6 as u32);
+
     let parsed_f7 = parse_hotkey_string("F7").expect("Failed to parse F7");
     assert_eq!(parsed_f7.modifiers, MOD_NOREPEAT);
     assert_eq!(parsed_f7.vk_code, VK_F7 as u32);
 
     let parsed_f8 = parse_hotkey_string("F8").expect("Failed to parse F8");
     assert_eq!(parsed_f8.vk_code, VK_F8 as u32);
+
+    let parsed_f9 = parse_hotkey_string("F9").expect("Failed to parse F9");
+    assert_eq!(parsed_f9.modifiers, MOD_NOREPEAT);
+    assert_eq!(parsed_f9.vk_code, VK_F9 as u32);
 
     let parsed_prtsc = parse_hotkey_string("PrintScreen").expect("Failed to parse PrintScreen");
     assert_eq!(parsed_prtsc.modifiers, MOD_NOREPEAT);

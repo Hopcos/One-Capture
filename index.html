@@ -20,13 +20,13 @@
       <div class="nav-item active" data-tab="screen">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         <span data-i18n="nav_screen">屏幕录制</span>
-        <span class="nav-badge hotkey-tag" id="hkScreenBadge">F7</span>
+        <span class="nav-badge hotkey-tag" id="hkScreenBadge">F6</span>
       </div>
 
       <div class="nav-item" data-tab="audio">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         <span data-i18n="nav_audio">声音录制</span>
-        <span class="nav-badge hotkey-tag" id="hkAudioBadge">F8</span>
+        <span class="nav-badge hotkey-tag" id="hkAudioBadge">F7</span>
       </div>
 
       <div class="nav-item" data-tab="screenshot">
@@ -86,10 +86,16 @@
           <h1 class="view-title" data-i18n="screen_title">屏幕录制</h1>
           <p class="view-subtitle" data-i18n="screen_subtitle">支持全屏/区域窗口选定、多声源混合、硬件加速编码与定时窗口</p>
         </div>
-        <button id="btnStartScreenRecord" class="btn btn-primary">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          <span id="btnStartScreenRecordText" data-i18n="btn_start_screen">开始录制 (F7)</span>
-        </button>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button id="btnStartScreenRecord" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span id="btnStartScreenRecordText" data-i18n="btn_start_screen">开始录制 (F6)</span>
+          </button>
+          <button id="btnStopScreenRecord" class="btn btn-danger" style="display: none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            <span id="btnStopScreenRecordText" data-i18n="btn_stop_record">停止录制 (F9)</span>
+          </button>
+        </div>
       </div>
 
       <div class="grid-2">
@@ -244,10 +250,16 @@
           <h1 class="view-title" data-i18n="audio_title">独立声音录制</h1>
           <p class="view-subtitle" data-i18n="audio_subtitle">专业级音频捕捉，支持输入与输出双通道混音与无损音频格式</p>
         </div>
-        <button id="btnStartAudioRecord" class="btn btn-primary">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          <span id="btnStartAudioRecordText" data-i18n="btn_start_audio">开始录音 (F8)</span>
-        </button>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button id="btnStartAudioRecord" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span id="btnStartAudioRecordText" data-i18n="btn_start_audio">开始录音 (F7)</span>
+          </button>
+          <button id="btnStopAudioRecord" class="btn btn-danger" style="display: none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            <span id="btnStopAudioRecordText" data-i18n="btn_stop_record">停止录音 (F9)</span>
+          </button>
+        </div>
       </div>
 
       <div class="grid-2">
@@ -395,11 +407,15 @@
           </div>
           <div class="form-group">
             <label class="form-label" data-i18n="hk_screen_label">开始/暂停屏幕录制</label>
-            <input type="text" id="hkScreen" value="F7" />
+            <input type="text" id="hkScreen" value="F6" />
           </div>
           <div class="form-group">
             <label class="form-label" data-i18n="hk_audio_label">开始/暂停声音录制</label>
-            <input type="text" id="hkAudio" value="F8" />
+            <input type="text" id="hkAudio" value="F7" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="hk_stop_label">停止录制全局热键</label>
+            <input type="text" id="hkStop" value="F9" />
           </div>
         </div>
 

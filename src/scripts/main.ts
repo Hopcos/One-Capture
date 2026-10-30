@@ -51,8 +51,17 @@ interface ScreenRect {
 }
 
 let isRecording = false;
+let isPaused = false;
 let currentRecordingType: "screen" | "audio" | null = null;
 let statusPollInterval: any = null;
+
+let currentHotkeys = {
+  snip: "F1",
+  screen_record: "F6",
+  audio_record: "F7",
+  stop_record: "F9",
+  pin_clipboard: "F3",
+};
 
 // Lightweight in-app Toast notification (eliminates browser alert modals!)
 export function showToast(message: string, type: "info" | "success" | "error" = "info", duration = 3000) {
@@ -89,6 +98,7 @@ export function showToast(message: string, type: "info" | "success" | "error" = 
 // Reset recording buttons back to initial idle state
 function resetRecordingUI() {
   isRecording = false;
+  isPaused = false;
   currentRecordingType = null;
   if (statusPollInterval) {
     clearInterval(statusPollInterval);
@@ -96,17 +106,27 @@ function resetRecordingUI() {
   }
 
   const btnScreen = document.getElementById("btnStartScreenRecord") as HTMLButtonElement;
+  const btnStopScreen = document.getElementById("btnStopScreenRecord") as HTMLButtonElement;
   if (btnScreen) {
-    btnScreen.classList.remove("btn-danger");
+    btnScreen.classList.remove("btn-danger", "btn-warning");
     btnScreen.classList.add("btn-primary");
-    btnScreen.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span data-i18n="btn_start_screen">${t("btn_start_screen")}</span>`;
+    const hkText = currentHotkeys.screen_record || "F6";
+    btnScreen.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>${t("btn_start_screen")} (${hkText})</span>`;
+  }
+  if (btnStopScreen) {
+    btnStopScreen.style.display = "none";
   }
 
   const btnAudio = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
+  const btnStopAudio = document.getElementById("btnStopAudioRecord") as HTMLButtonElement;
   if (btnAudio) {
-    btnAudio.classList.remove("btn-danger");
+    btnAudio.classList.remove("btn-danger", "btn-warning");
     btnAudio.classList.add("btn-primary");
-    btnAudio.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span data-i18n="btn_start_audio">${t("btn_start_audio")}</span>`;
+    const hkText = currentHotkeys.audio_record || "F7";
+    btnAudio.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>${t("btn_start_audio")} (${hkText})</span>`;
+  }
+  if (btnStopAudio) {
+    btnStopAudio.style.display = "none";
   }
 }
 
@@ -129,17 +149,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   refreshPinsList();
   await loadMediaGallery();
 
-  await listen("media-saved", async () => {
-    resetRecordingUI();
+  await listen<string>("media-saved", async (event) => {
     loadMediaGallery();
-    showToast(t("toast_recording_finished"), "success");
-    try {
-      const appWin = getCurrentWindow();
-      await appWin.unminimize();
-      await appWin.show();
-      await appWin.setFocus();
-    } catch (e) {
-      console.warn("Failed to unminimize window on media-saved:", e);
+    // Do not pop up finished toasts or unminimize main window for screenshots!
+    const isImage = event.payload && (event.payload.endsWith(".png") || event.payload.endsWith(".jpg"));
+    if (!isImage) {
+      resetRecordingUI();
+      showToast(t("toast_recording_finished"), "success");
+      try {
+        const appWin = getCurrentWindow();
+        await appWin.unminimize();
+        await appWin.show();
+        await appWin.setFocus();
+      } catch (e) {
+        console.warn("Failed to unminimize window on media-saved:", e);
+      }
     }
   });
   await listen("recording-stopped", async () => {
@@ -262,25 +286,15 @@ async function setupGlobalHotkeyListeners() {
   });
 
   await listen("global-hotkey-screen-record", async () => {
-    if (isRecording) {
-      await stopActiveRecording();
-    } else {
-      await startScreenRecording();
-    }
+    await handleScreenRecordToggle();
   });
 
   await listen("global-hotkey-audio-record", async () => {
-    if (isRecording) {
-      await stopActiveRecording();
-    } else {
-      await startAudioRecording();
-    }
+    await handleAudioRecordToggle();
   });
 
   await listen("global-hotkey-stop-record", async () => {
-    if (isRecording) {
-      await stopActiveRecording();
-    }
+    await stopActiveRecording();
   });
 }
 
@@ -617,6 +631,14 @@ async function loadSettings() {
     const activeLang = (settings.language as Language) || "zh-CN";
     setLanguage(activeLang);
 
+    currentHotkeys = {
+      snip: settings.hotkeys.snip || "F1",
+      screen_record: settings.hotkeys.screen_record || "F6",
+      audio_record: settings.hotkeys.audio_record || "F7",
+      stop_record: settings.hotkeys.stop_record || "F9",
+      pin_clipboard: settings.hotkeys.pin_clipboard || "F3",
+    };
+
     const settingOutput = document.getElementById("settingOutputDir") as HTMLInputElement;
     if (settingOutput) settingOutput.value = settings.output_dir;
 
@@ -624,22 +646,27 @@ async function loadSettings() {
     const hkPin = document.getElementById("hkPin") as HTMLInputElement;
     const hkScreen = document.getElementById("hkScreen") as HTMLInputElement;
     const hkAudio = document.getElementById("hkAudio") as HTMLInputElement;
+    const hkStop = document.getElementById("hkStop") as HTMLInputElement;
 
     if (hkSnip) {
-      hkSnip.value = settings.hotkeys.snip;
+      hkSnip.value = currentHotkeys.snip;
       setupHotkeyInputRecord(hkSnip);
     }
     if (hkPin) {
-      hkPin.value = settings.hotkeys.pin_clipboard || "F3";
+      hkPin.value = currentHotkeys.pin_clipboard;
       setupHotkeyInputRecord(hkPin);
     }
     if (hkScreen) {
-      hkScreen.value = settings.hotkeys.screen_record;
+      hkScreen.value = currentHotkeys.screen_record;
       setupHotkeyInputRecord(hkScreen);
     }
     if (hkAudio) {
-      hkAudio.value = settings.hotkeys.audio_record;
+      hkAudio.value = currentHotkeys.audio_record;
       setupHotkeyInputRecord(hkAudio);
+    }
+    if (hkStop) {
+      hkStop.value = currentHotkeys.stop_record;
+      setupHotkeyInputRecord(hkStop);
     }
 
     const floatingBarToggle = document.getElementById("floatingBarToggle") as HTMLSelectElement;
@@ -654,11 +681,119 @@ async function loadSettings() {
     const bScreen = document.getElementById("hkScreenBadge");
     const bAudio = document.getElementById("hkAudioBadge");
 
-    if (bSnip) bSnip.textContent = settings.hotkeys.snip;
-    if (bScreen) bScreen.textContent = settings.hotkeys.screen_record;
-    if (bAudio) bAudio.textContent = settings.hotkeys.audio_record;
+    if (bSnip) bSnip.textContent = currentHotkeys.snip;
+    if (bScreen) bScreen.textContent = currentHotkeys.screen_record;
+    if (bAudio) bAudio.textContent = currentHotkeys.audio_record;
+
+    if (!isRecording) {
+      resetRecordingUI();
+    }
   } catch (err) {
     console.error("Failed to load settings:", err);
+  }
+}
+
+// Pause Active Recording
+async function pauseActiveRecording() {
+  try {
+    await invoke("pause_recording");
+    isPaused = true;
+    updateRecordingButtonState();
+    showToast(currentRecordingType === "screen" ? "⏸️ 屏幕录制已暂停" : "⏸️ 声音录制已暂停", "info", 1800);
+  } catch (err) {
+    showToast("暂停录制失败: " + err, "error");
+  }
+}
+
+// Resume Active Recording
+async function resumeActiveRecording() {
+  try {
+    await invoke("resume_recording");
+    isPaused = false;
+    updateRecordingButtonState();
+    showToast(currentRecordingType === "screen" ? "▶️ 屏幕录制已继续" : "▶️ 声音录制已继续", "info", 1800);
+  } catch (err) {
+    showToast("恢复录制失败: " + err, "error");
+  }
+}
+
+// Toggle Screen Record (Start -> Pause -> Resume -> ...)
+async function handleScreenRecordToggle() {
+  if (!isRecording) {
+    await startScreenRecording();
+  } else if (currentRecordingType === "screen") {
+    if (!isPaused) {
+      await pauseActiveRecording();
+    } else {
+      await resumeActiveRecording();
+    }
+  } else {
+    showToast(`当前正在进行声音录制，请先按停止录制快捷键 (${currentHotkeys.stop_record || "F9"}) 停止。`, "info");
+  }
+}
+
+// Toggle Audio Record (Start -> Pause -> Resume -> ...)
+async function handleAudioRecordToggle() {
+  if (!isRecording) {
+    await startAudioRecording();
+  } else if (currentRecordingType === "audio") {
+    if (!isPaused) {
+      await pauseActiveRecording();
+    } else {
+      await resumeActiveRecording();
+    }
+  } else {
+    showToast(`当前正在进行屏幕录制，请先按停止录制快捷键 (${currentHotkeys.stop_record || "F9"}) 停止。`, "info");
+  }
+}
+
+// Update UI buttons based on active/paused recording state
+function updateRecordingButtonState(elapsed: string = "00:00") {
+  const hkStop = currentHotkeys.stop_record || "F9";
+  if (currentRecordingType === "screen") {
+    const btnScreen = document.getElementById("btnStartScreenRecord") as HTMLButtonElement;
+    const btnStopScreen = document.getElementById("btnStopScreenRecord") as HTMLButtonElement;
+    const hkScreen = currentHotkeys.screen_record || "F6";
+
+    if (btnStopScreen) {
+      btnStopScreen.style.display = "inline-flex";
+      btnStopScreen.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>${t("btn_stop_record")} (${hkStop})</span>`;
+    }
+
+    if (btnScreen) {
+      btnScreen.classList.remove("btn-primary");
+      if (isPaused) {
+        btnScreen.classList.remove("btn-danger");
+        btnScreen.classList.add("btn-warning");
+        btnScreen.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>${t("btn_resume_screen")} (${hkScreen}) [${elapsed}]</span>`;
+      } else {
+        btnScreen.classList.remove("btn-warning");
+        btnScreen.classList.add("btn-danger");
+        btnScreen.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><span>${t("btn_pause_screen")} (${hkScreen}) (${elapsed})</span>`;
+      }
+    }
+  } else if (currentRecordingType === "audio") {
+    const btnAudio = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
+    const btnStopAudio = document.getElementById("btnStopAudioRecord") as HTMLButtonElement;
+    const hkAudio = currentHotkeys.audio_record || "F7";
+
+    if (btnStopAudio) {
+      btnStopAudio.style.display = "inline-flex";
+      btnStopAudio.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>${t("btn_stop_record")} (${hkStop})</span>`;
+    }
+
+    if (btnAudio) {
+      btnAudio.classList.remove("btn-primary");
+      if (isPaused) {
+        btnAudio.classList.remove("btn-danger");
+        btnAudio.classList.add("btn-warning");
+        btnAudio.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>${t("btn_resume_audio")} (${hkAudio}) [${elapsed}]</span>`;
+      } else {
+        btnAudio.classList.remove("btn-warning");
+        btnAudio.classList.add("btn-danger");
+        btnAudio.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><span>${t("btn_pause_audio")} (${hkAudio}) (${elapsed})</span>`;
+      }
+    }
   }
 }
 
@@ -669,23 +804,14 @@ function setupRecordingHandlers() {
   setupFloatingBarHandlers();
 
   const btnScreen = document.getElementById("btnStartScreenRecord") as HTMLButtonElement;
+  const btnStopScreen = document.getElementById("btnStopScreenRecord") as HTMLButtonElement;
   const btnAudio = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
+  const btnStopAudio = document.getElementById("btnStopAudioRecord") as HTMLButtonElement;
 
-  btnScreen?.addEventListener("click", async () => {
-    if (isRecording) {
-      await stopActiveRecording();
-    } else {
-      await startScreenRecording();
-    }
-  });
-
-  btnAudio?.addEventListener("click", async () => {
-    if (isRecording) {
-      await stopActiveRecording();
-    } else {
-      await startAudioRecording();
-    }
-  });
+  btnScreen?.addEventListener("click", handleScreenRecordToggle);
+  btnStopScreen?.addEventListener("click", stopActiveRecording);
+  btnAudio?.addEventListener("click", handleAudioRecordToggle);
+  btnStopAudio?.addEventListener("click", stopActiveRecording);
 
   const btnSaveSettings = document.getElementById("btnSaveSettings");
   btnSaveSettings?.addEventListener("click", async () => {
@@ -694,6 +820,7 @@ function setupRecordingHandlers() {
     const hkPin = document.getElementById("hkPin") as HTMLInputElement;
     const hkScreen = document.getElementById("hkScreen") as HTMLInputElement;
     const hkAudio = document.getElementById("hkAudio") as HTMLInputElement;
+    const hkStop = document.getElementById("hkStop") as HTMLInputElement;
     const floatingBarToggle = document.getElementById("floatingBarToggle") as HTMLSelectElement;
 
     try {
@@ -709,6 +836,7 @@ function setupRecordingHandlers() {
       if (hkPin?.value) current.hotkeys.pin_clipboard = hkPin.value.trim();
       if (hkScreen?.value) current.hotkeys.screen_record = hkScreen.value.trim();
       if (hkAudio?.value) current.hotkeys.audio_record = hkAudio.value.trim();
+      if (hkStop?.value) current.hotkeys.stop_record = hkStop.value.trim();
       if (floatingBarToggle) {
         current.floating_bar_enabled = floatingBarToggle.value === "true";
       }
@@ -775,15 +903,10 @@ async function startScreenRecording() {
 
     const outPath = await invoke<string>("start_screen_record", { options });
     isRecording = true;
+    isPaused = false;
     currentRecordingType = "screen";
 
-    const btn = document.getElementById("btnStartScreenRecord") as HTMLButtonElement;
-    if (btn) {
-      btn.classList.remove("btn-primary");
-      btn.classList.add("btn-danger");
-      btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>${t("btn_stop_screen")} (00:00)</span>`;
-    }
-
+    updateRecordingButtonState("00:00");
     startStatusPolling();
   } catch (err) {
     try {
@@ -817,13 +940,10 @@ async function startAudioRecording() {
 
     await invoke<string>("start_audio_record", { options });
     isRecording = true;
+    isPaused = false;
     currentRecordingType = "audio";
 
-    const btn = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
-    btn.classList.remove("btn-primary");
-    btn.classList.add("btn-danger");
-    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>${t("btn_stop_audio")} (00:00)</span>`;
-
+    updateRecordingButtonState("00:00");
     startStatusPolling();
   } catch (err) {
     showToast(t("toast_recording_failed") + err, "error");
@@ -832,6 +952,7 @@ async function startAudioRecording() {
 
 // Stop Active Recording
 async function stopActiveRecording() {
+  if (!isRecording) return;
   try {
     const result = await invoke<{ path: string; duration: string; size_bytes: number }>("stop_recording");
     resetRecordingUI();
@@ -849,14 +970,9 @@ function startStatusPolling() {
   statusPollInterval = setInterval(async () => {
     try {
       const res = await invoke<RecordStatusResult>("get_recording_status");
-      if (res.status === "recording") {
-        if (currentRecordingType === "screen") {
-          const btn = document.getElementById("btnStartScreenRecord");
-          if (btn) btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>${t("btn_stop_screen")} (${res.elapsed})</span>`;
-        } else if (currentRecordingType === "audio") {
-          const btn = document.getElementById("btnStartAudioRecord");
-          if (btn) btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>${t("btn_stop_audio")} (${res.elapsed})</span>`;
-        }
+      if (res.status === "recording" || res.status === "paused") {
+        isPaused = res.status === "paused";
+        updateRecordingButtonState(res.elapsed);
       } else if (res.status === "idle" && isRecording) {
         resetRecordingUI();
       }
