@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 let isPaused = false;
 
@@ -10,6 +12,16 @@ window.addEventListener("DOMContentLoaded", () => {
   const iconPause = document.getElementById("iconPause") as HTMLElement;
   const iconResume = document.getElementById("iconResume") as HTMLElement;
   const recDot = document.getElementById("recDot") as HTMLElement;
+
+  // React to settings update: if floating bar was disabled in settings, hide immediately
+  listen<{ floating_bar_enabled: boolean }>("settings-updated", async (event) => {
+    if (!event.payload.floating_bar_enabled) {
+      try {
+        const appWin = getCurrentWindow();
+        await appWin.hide();
+      } catch (_) {}
+    }
+  });
 
   // Poll recording status
   setInterval(async () => {
@@ -28,6 +40,14 @@ window.addEventListener("DOMContentLoaded", () => {
           iconResume.style.display = "none";
           recDot.style.background = "#f43f5e";
         }
+      } else if (res.status === "idle") {
+        // If recording is stopped or idle, ensure floating bar is hidden
+        try {
+          const appWin = getCurrentWindow();
+          if (await appWin.isVisible()) {
+            await appWin.hide();
+          }
+        } catch (_) {}
       }
     } catch (e) {
       // Ignore

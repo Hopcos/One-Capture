@@ -32,10 +32,12 @@ pub async fn start_screen_record(
         let _ = main_win.minimize();
     }
 
-    // Show desktop floating controller
-    if settings.floating_bar_enabled {
-        if let Some(float_win) = app.get_webview_window("floating") {
+    // Show or ensure hidden desktop floating controller based on settings
+    if let Some(float_win) = app.get_webview_window("floating") {
+        if settings.floating_bar_enabled {
             let _ = float_win.show();
+        } else {
+            let _ = float_win.hide();
         }
     }
 
@@ -51,9 +53,11 @@ pub async fn start_audio_record(
     let settings = AppSettings::load();
     let path = pipeline.start_audio_recording(options, &settings.output_dir)?;
 
-    if settings.floating_bar_enabled {
-        if let Some(float_win) = app.get_webview_window("floating") {
+    if let Some(float_win) = app.get_webview_window("floating") {
+        if settings.floating_bar_enabled {
             let _ = float_win.show();
+        } else {
+            let _ = float_win.hide();
         }
     }
 

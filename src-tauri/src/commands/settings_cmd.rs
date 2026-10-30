@@ -1,7 +1,8 @@
 use std::process::Command;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use crate::audio::{list_audio_devices, AudioDevice};
 use crate::config::AppSettings;
+use crate::recorder::{RecorderPipeline, RecordingStatus};
 
 #[derive(serde::Serialize)]
 pub struct AudioDevicesResult {
@@ -18,6 +19,21 @@ pub fn get_settings() -> AppSettings {
 pub fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
     settings.save()?;
     crate::hotkey::reload_global_hotkeys();
+
+    // Dynamically manage desktop floating bar visibility based on settings
+    if !settings.floating_bar_enabled {
+        if let Some(float_win) = app.get_webview_window("floating") {
+            let _ = float_win.hide();
+        }
+    } else if let Some(pipeline) = app.try_state::<RecorderPipeline>() {
+        let (status, _, _) = pipeline.query_status();
+        if status != RecordingStatus::Idle {
+            if let Some(float_win) = app.get_webview_window("floating") {
+                let _ = float_win.show();
+            }
+        }
+    }
+
     let _ = app.emit("settings-updated", &settings);
     Ok(())
 }

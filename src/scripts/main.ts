@@ -570,6 +570,43 @@ export async function switchLanguage(newLang: Language) {
   }
 }
 
+export async function switchFloatingBarEnabled(enabled: boolean) {
+  const valStr = enabled ? "true" : "false";
+  const floatingBarToggle = document.getElementById("floatingBarToggle") as HTMLSelectElement;
+  if (floatingBarToggle) {
+    floatingBarToggle.value = valStr;
+  }
+  document.querySelectorAll("#floatingBarPills .pill-option").forEach((pill) => {
+    pill.classList.toggle("active", pill.getAttribute("data-value") === valStr);
+  });
+
+  try {
+    const current = await invoke<AppSettings>("get_settings");
+    current.floating_bar_enabled = enabled;
+    await invoke("save_settings", { settings: current });
+
+    const toastMsg = enabled ? t("toast_floating_enabled") : t("toast_floating_disabled");
+    showToast(toastMsg, "info", 2000);
+  } catch (e) {
+    showToast(t("toast_settings_failed") + e, "error");
+  }
+}
+
+function setupFloatingBarHandlers() {
+  const floatingBarToggle = document.getElementById("floatingBarToggle") as HTMLSelectElement;
+  floatingBarToggle?.addEventListener("change", async () => {
+    const isEnabled = floatingBarToggle.value === "true";
+    await switchFloatingBarEnabled(isEnabled);
+  });
+
+  document.querySelectorAll("#floatingBarPills .pill-option").forEach((pill) => {
+    pill.addEventListener("click", async () => {
+      const isEnabled = pill.getAttribute("data-value") === "true";
+      await switchFloatingBarEnabled(isEnabled);
+    });
+  });
+}
+
 // Load Application Settings
 async function loadSettings() {
   try {
@@ -609,6 +646,9 @@ async function loadSettings() {
     if (floatingBarToggle) {
       floatingBarToggle.value = settings.floating_bar_enabled ? "true" : "false";
     }
+    document.querySelectorAll("#floatingBarPills .pill-option").forEach((pill) => {
+      pill.classList.toggle("active", pill.getAttribute("data-value") === (settings.floating_bar_enabled ? "true" : "false"));
+    });
 
     const bSnip = document.getElementById("hkSnipBadge");
     const bScreen = document.getElementById("hkScreenBadge");
@@ -626,6 +666,7 @@ async function loadSettings() {
 function setupRecordingHandlers() {
   setupThemeHandlers();
   setupLanguageHandlers();
+  setupFloatingBarHandlers();
 
   const btnScreen = document.getElementById("btnStartScreenRecord") as HTMLButtonElement;
   const btnAudio = document.getElementById("btnStartAudioRecord") as HTMLButtonElement;
