@@ -16,8 +16,8 @@ impl Default for AppHotkeys {
     fn default() -> Self {
         Self {
             snip: "F1".to_string(),
-            screen_record: "F6".to_string(),
-            audio_record: "F7".to_string(),
+            screen_record: "F7".to_string(),
+            audio_record: "F6".to_string(),
             stop_record: "F9".to_string(),
             pin_clipboard: "F3".to_string(),
         }
@@ -83,9 +83,9 @@ impl AppSettings {
             if let Ok(content) = fs::read_to_string(&path) {
                 if let Ok(mut settings) = serde_json::from_str::<AppSettings>(&content) {
                     let mut changed = false;
-                    if settings.hotkeys.screen_record == "F7" && settings.hotkeys.audio_record == "F8" {
-                        settings.hotkeys.screen_record = "F6".to_string();
-                        settings.hotkeys.audio_record = "F7".to_string();
+                    if settings.hotkeys.screen_record == "F6" && settings.hotkeys.audio_record == "F7" {
+                        settings.hotkeys.screen_record = "F7".to_string();
+                        settings.hotkeys.audio_record = "F6".to_string();
                         changed = true;
                     }
                     if settings.hotkeys.stop_record == "Ctrl+Shift+X" || settings.hotkeys.stop_record.is_empty() {

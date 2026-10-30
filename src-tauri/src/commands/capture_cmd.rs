@@ -11,6 +11,13 @@ pub struct CaptureResult {
 
 #[tauri::command]
 pub async fn capture_full_screen(app: AppHandle) -> Result<CaptureResult, String> {
+    // Instantly hide the main window before capturing so no shrunken or lingering window artifacts are captured
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.hide();
+    }
+    // Small pause to guarantee DWM composition has cleared the window area
+    tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+
     let (info, rgba) = capture_virtual_screen()?;
     let png_bytes = encode_to_png(&rgba, info.width, info.height)?;
     let base64_str = BASE64_STANDARD.encode(&png_bytes);

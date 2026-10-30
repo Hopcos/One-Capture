@@ -450,8 +450,8 @@ cargo test
 | Default Hotkey | Action | Description |
 | :--- | :--- | :--- |
 | `F1` | Take Screenshot | Freezes desktop, opens magnifier loupe & annotation toolbar |
-| `F6` | Start / Pause / Resume Screen Record | 1st press starts, subsequent presses toggle pause/resume |
-| `F7` | Start / Pause / Resume Audio Record | Standalone audio capture, subsequent presses toggle pause/resume |
+| `F7` | Start / Pause / Resume Screen Record | 1st press starts, subsequent presses toggle pause/resume (Configurable) |
+| `F6` | Start / Pause / Resume Audio Record | Standalone audio capture, subsequent presses toggle pause/resume (Configurable) |
 | `F9` | Stop Recording | Stops active screen or audio recording session and safely finalizes media |
 | `F3` | Pin Image to Desktop | Instantly pins selected screenshot as an independent top-level window |
 | `Esc` / `Double Click Pin` | Dismiss Pin / Overlay | Dismisses active screenshot overlay or floating pin window |

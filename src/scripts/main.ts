@@ -57,8 +57,8 @@ let statusPollInterval: any = null;
 
 let currentHotkeys = {
   snip: "F1",
-  screen_record: "F6",
-  audio_record: "F7",
+  screen_record: "F7",
+  audio_record: "F6",
   stop_record: "F9",
   pin_clipboard: "F3",
 };
@@ -110,8 +110,8 @@ function resetRecordingUI() {
   if (btnScreen) {
     btnScreen.classList.remove("btn-danger", "btn-warning");
     btnScreen.classList.add("btn-primary");
-    const hkText = currentHotkeys.screen_record || "F6";
-    btnScreen.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>${t("btn_start_screen")} (${hkText})</span>`;
+    const hkText = currentHotkeys.screen_record || "F7";
+    btnScreen.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span id="btnStartScreenRecordText">${t("btn_start_screen")} (${hkText})</span>`;
   }
   if (btnStopScreen) {
     btnStopScreen.style.display = "none";
@@ -122,8 +122,8 @@ function resetRecordingUI() {
   if (btnAudio) {
     btnAudio.classList.remove("btn-danger", "btn-warning");
     btnAudio.classList.add("btn-primary");
-    const hkText = currentHotkeys.audio_record || "F7";
-    btnAudio.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>${t("btn_start_audio")} (${hkText})</span>`;
+    const hkText = currentHotkeys.audio_record || "F6";
+    btnAudio.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><span id="btnStartAudioRecordText">${t("btn_start_audio")} (${hkText})</span>`;
   }
   if (btnStopAudio) {
     btnStopAudio.style.display = "none";
@@ -145,6 +145,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   onLanguageChange(() => {
     refreshPinsList();
     loadMediaGallery();
+    if (!isRecording) {
+      resetRecordingUI();
+    }
   });
   refreshPinsList();
   await loadMediaGallery();
@@ -194,21 +197,21 @@ function setupEscapeKeyHandler() {
   });
 }
 
-// Screen capture workflow that safely minimizes the main window first
+// Screen capture workflow that safely hides the main window instantly (no shrink animation)
 async function startCaptureWorkflow(mode: "screenshot" | "record_region") {
   const appWin = getCurrentWindow();
   try {
-    // 1. Minimize main window to taskbar so user's screen capture is unobscured while keeping taskbar/tray access
-    await appWin.minimize();
+    // 1. Immediately hide main window without minimize animation so no shrunken window appears in screenshot
+    await appWin.hide();
     // 2. Allow Windows DWM composition transition to settle
-    await new Promise((resolve) => setTimeout(resolve, 180));
+    await new Promise((resolve) => setTimeout(resolve, 60));
     // 3. Emit overlay mode & trigger capture
     await emit("set-overlay-mode", { mode });
     await invoke("capture_full_screen");
   } catch (err) {
     console.error("Failed to start capture workflow:", err);
-    await appWin.unminimize();
     await appWin.show();
+    await appWin.unminimize();
     await appWin.setFocus();
   }
 }

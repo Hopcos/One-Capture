@@ -27,7 +27,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Screen Recording View
     screen_title: "屏幕录制",
     screen_subtitle: "支持全屏/区域窗口选定、多声源混合、硬件加速编码与定时窗口",
-    btn_start_screen: "开始录制 (F6)",
+    btn_start_screen: "开始录制",
     btn_pause_screen: "暂停录制",
     btn_resume_screen: "继续录制",
     btn_stop_screen: "停止录制",
@@ -64,7 +64,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Audio Recording View
     audio_title: "独立声音录制",
     audio_subtitle: "专业级音频捕捉，支持输入与输出双通道混音与无损音频格式",
-    btn_start_audio: "开始录音 (F7)",
+    btn_start_audio: "开始录制",
     btn_pause_audio: "暂停录音",
     btn_resume_audio: "继续录音",
     btn_stop_audio: "停止录音",
@@ -169,7 +169,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Screen Recording View
     screen_title: "Screen Recording",
     screen_subtitle: "Full screen / custom region, multi-audio mixing, hardware encoding & duration timer",
-    btn_start_screen: "Start Record (F6)",
+    btn_start_screen: "Start Recording",
     btn_pause_screen: "Pause Record",
     btn_resume_screen: "Resume Record",
     btn_stop_screen: "Stop Record",
@@ -206,7 +206,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Audio Recording View
     audio_title: "Stand-alone Audio Recording",
     audio_subtitle: "Studio-grade audio capture, dual-channel mixing & lossless audio formats",
-    btn_start_audio: "Start Audio Record (F7)",
+    btn_start_audio: "Start Recording",
     btn_pause_audio: "Pause Audio",
     btn_resume_audio: "Resume Audio",
     btn_stop_audio: "Stop Recording",
